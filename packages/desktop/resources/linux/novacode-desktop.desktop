@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=NovaCode
+Exec=/opt/NovaCode/ai.novacode.desktop %U
+Terminal=false
+Type=Application
+Icon=ai.novacode.desktop
+StartupWMClass=ai.novacode.desktop
+NoDisplay=true
+Comment=Open source AI coding agent
+Categories=Development;
