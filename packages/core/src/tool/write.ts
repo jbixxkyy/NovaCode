@@ -38,6 +38,11 @@ export type Output = typeof Output.Type
 export const toModelOutput = (output: Output) =>
   `${output.existed ? "Wrote" : "Created"} file successfully: ${output.resource}`
 
+const denied = (action: string) => (error: unknown) =>
+  new ToolFailure({
+    message: error instanceof PermissionV2.CorrectedError ? error.feedback : `Permission denied: ${action}`,
+  })
+
 /** Deferred V2 write UX integrations remain visible at the model-facing seam. */
 // TODO: Add formatter integration after V2 formatter runtime exists.
 // TODO: Publish watcher/file-edit events after V2 watcher integration exists.
@@ -70,22 +75,30 @@ const layer = Layer.effectDiscard(
                 const target = yield* mutation.resolve({ path: input.path, kind: "file" })
                 const external = target.externalDirectory
                 if (external)
-                  yield* permission.assert({
-                    ...LocationMutation.externalDirectoryPermission(external),
+                  yield* permission
+                    .assert({
+                      ...LocationMutation.externalDirectoryPermission(external),
+                      sessionID: context.sessionID,
+                      agent: context.agent,
+                      source,
+                    })
+                    .pipe(Effect.mapError(denied("external_directory")))
+                yield* permission
+                  .assert({
+                    action: "edit",
+                    resources: [target.resource],
+                    save: ["*"],
                     sessionID: context.sessionID,
                     agent: context.agent,
                     source,
                   })
-                yield* permission.assert({
-                  action: "edit",
-                  resources: [target.resource],
-                  save: ["*"],
-                  sessionID: context.sessionID,
-                  agent: context.agent,
-                  source,
-                })
+                  .pipe(Effect.mapError(denied("edit")))
                 return yield* files.writeTextPreservingBom({ target, content: input.content })
-              }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to write ${input.path}` }))),
+              }).pipe(
+                Effect.mapError((error) =>
+                  error instanceof ToolFailure ? error : new ToolFailure({ message: `Unable to write ${input.path}` }),
+                ),
+              ),
           }),
           "edit",
         ),

@@ -69,6 +69,7 @@ interface Request {
 
 const requests: Request[] = []
 const assertions: PermissionV2.AssertInput[] = []
+let deny = false
 let responseBody = payload("search results")
 let makeResponse = () => new Response(responseBody, { status: 200 })
 let config: WebSearchTool.Config = { enableExa: false, enableParallel: false }
@@ -76,6 +77,7 @@ let config: WebSearchTool.Config = { enableExa: false, enableParallel: false }
 beforeEach(() => {
   responseBody = payload("search results")
   makeResponse = () => new Response(responseBody, { status: 200 })
+  deny = false
 })
 
 const http = Layer.succeed(
@@ -95,7 +97,10 @@ const http = Layer.succeed(
 const permission = Layer.succeed(
   PermissionV2.Service,
   PermissionV2.Service.of({
-    assert: (input) => Effect.sync(() => assertions.push(input)),
+    assert: (input) =>
+      Effect.sync(() => assertions.push(input)).pipe(
+        Effect.andThen(deny ? Effect.fail(new PermissionV2.BlockedError({ rules: [] })) : Effect.void),
+      ),
     ask: () => Effect.die("unused"),
     reply: () => Effect.die("unused"),
     get: () => Effect.die("unused"),
@@ -276,6 +281,25 @@ describe("WebSearchTool registration", () => {
           call: { type: "tool-call", id: "call-empty", name: "websearch", input: { query: "nothing" } },
         }),
       ).toEqual({ type: "text", value: WebSearchTool.NO_RESULTS })
+    }),
+  )
+
+  it.effect("does not search when permission is denied", () =>
+    Effect.gen(function* () {
+      requests.length = 0
+      assertions.length = 0
+      deny = true
+      config = { provider: "exa", enableExa: false, enableParallel: false }
+      const registry = yield* ToolRegistry.Service
+
+      expect(
+        yield* executeTool(registry, {
+          sessionID,
+          ...toolIdentity,
+          call: { type: "tool-call", id: "call-denied", name: "websearch", input: { query: "secret" } },
+        }),
+      ).toEqual({ type: "error", value: "Permission denied: websearch" })
+      expect(requests).toEqual([])
     }),
   )
 

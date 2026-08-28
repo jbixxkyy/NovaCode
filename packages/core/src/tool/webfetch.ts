@@ -7,6 +7,7 @@ import { Parser } from "htmlparser2"
 import TurndownService from "turndown"
 import { makeLocationNode } from "../effect/app-node"
 import { LayerNodePlatform } from "../effect/app-node-platform"
+import { APP_NAME } from "../identity"
 import { PermissionV2 } from "../permission"
 import { collectBoundedResponseBody } from "./http-body"
 import { ToolRegistry } from "./registry"
@@ -17,6 +18,11 @@ export const name = "webfetch"
 export const MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 export const DEFAULT_TIMEOUT_SECONDS = 30
 export const MAX_TIMEOUT_SECONDS = 120
+
+const denied = (error: unknown) =>
+  new ToolFailure({
+    message: error instanceof PermissionV2.CorrectedError ? error.feedback : "Permission denied: webfetch",
+  })
 
 export const description = `Fetch content from an HTTP or HTTPS URL and return it as text, markdown, or HTML. Markdown is the default.
 
@@ -135,19 +141,21 @@ const layer = Layer.effectDiscard(
                 catch: (error) => error,
               })
 
-              yield* permission.assert({
-                action: name,
-                resources: [input.url],
-                save: ["*"],
-                metadata: input,
-                sessionID: context.sessionID,
-                agent: context.agent,
-                source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
-              })
+              yield* permission
+                .assert({
+                  action: name,
+                  resources: [input.url],
+                  save: ["*"],
+                  metadata: input,
+                  sessionID: context.sessionID,
+                  agent: context.agent,
+                  source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
+                })
+                .pipe(Effect.mapError(denied))
 
               const { body, contentType } = yield* Effect.gen(function* () {
                 const response = yield* execute(http, input.url, input.format).pipe(
-                  Effect.catchIf(isCloudflareChallenge, () => execute(http, input.url, input.format, "opencode")),
+                  Effect.catchIf(isCloudflareChallenge, () => execute(http, input.url, input.format, APP_NAME)),
                 )
                 const contentType = response.headers["content-type"] || ""
                 const mime = mimeFrom(contentType)
@@ -173,7 +181,11 @@ const layer = Layer.effectDiscard(
                 format: input.format,
                 output,
               }
-            }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to fetch ${input.url}` }))),
+            }).pipe(
+              Effect.mapError((error) =>
+                error instanceof ToolFailure ? error : new ToolFailure({ message: `Unable to fetch ${input.url}` }),
+              ),
+            ),
         }),
       })
       .pipe(Effect.orDie)

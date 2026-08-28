@@ -42,6 +42,11 @@ export const toModelOutput = (output: Output) =>
     ),
   ].join("\n")
 
+const denied = (action: string) => (error: unknown) =>
+  new ToolFailure({
+    message: error instanceof PermissionV2.CorrectedError ? error.feedback : `Permission denied: ${action}`,
+  })
+
 type Prepared =
   | (Extract<Patch.Hunk, { readonly type: "add" | "delete" }> & {
       readonly target: LocationMutation.Target
@@ -106,21 +111,25 @@ const layer = Layer.effectDiscard(
                   if (external) externalDirectories.set(external.resource, external)
                 }
                 for (const external of externalDirectories.values()) {
-                  yield* permission.assert({
-                    ...LocationMutation.externalDirectoryPermission(external),
+                  yield* permission
+                    .assert({
+                      ...LocationMutation.externalDirectoryPermission(external),
+                      sessionID: context.sessionID,
+                      agent: context.agent,
+                      source,
+                    })
+                    .pipe(Effect.mapError(denied("external_directory")))
+                }
+                yield* permission
+                  .assert({
+                    action: "edit",
+                    resources: [...new Set(targets.map(({ target }) => target.resource))],
+                    save: ["*"],
                     sessionID: context.sessionID,
                     agent: context.agent,
                     source,
                   })
-                }
-                yield* permission.assert({
-                  action: "edit",
-                  resources: [...new Set(targets.map(({ target }) => target.resource))],
-                  save: ["*"],
-                  sessionID: context.sessionID,
-                  agent: context.agent,
-                  source,
-                })
+                  .pipe(Effect.mapError(denied("edit")))
 
                 const prepared: Prepared[] = []
                 for (const { hunk, target } of targets) {

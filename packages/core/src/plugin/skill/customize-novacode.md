@@ -1,40 +1,31 @@
 <!--
   Built-in NovaCode skill. Name and description are registered in
   packages/core/src/plugin/skill.ts. The body below becomes the skill's content.
-  This skill is NovaCode-only. Do not treat it as an OpenCode skill.
 -->
 
 # Customizing NovaCode
 
-This skill is for **NovaCode only**, not OpenCode.
-
 NovaCode validates its own config strictly and refuses to start when a field
-is wrong. Native files are `novacode.json` and `.novacode/`. Legacy
-`opencode.json` and `.opencode/` are still read if present, and NovaCode
-files win when both exist. Global user config lives under `~/.config/novacode/`.
-The shapes below cover the common surface area, but they are a
-**summary, not the source of truth**.
+is wrong. Native files are `novacode.json` and `.novacode/`. Global user
+config lives under `~/.config/novacode/`. Older filenames are still read if
+present, and NovaCode files win when both exist. The shapes below cover the
+common surface area, but they are a **summary, not the source of truth**.
 
 ## Full schema reference
 
 The authoritative list of every config option — with field types, enums,
-defaults, and descriptions — lives in the published JSON Schema:
+defaults, and descriptions — lives in the published JSON Schema. If a field
+is not documented in this skill, fetch the schema rather than guessing.
+NovaCode hard-fails on invalid config, so the cost of a wrong shape is a
+broken startup.
 
-**<https://opencode.ai/config.json>**
-
-If a field is not documented in this skill, or you need to confirm an exact
-shape before writing config, **fetch that URL and read the schema directly**
-rather than guessing. NovaCode hard-fails on invalid config, so the cost of a
-wrong shape is a broken startup.
-
-Independently, every `opencode.json` should declare
-`"$schema": "https://opencode.ai/config.json"` so the user's editor catches
-mistakes as they type.
+Independently, every `novacode.json` should declare a `$schema` so the user's
+editor catches mistakes as they type.
 
 ## Applying changes
 
 Config is loaded once when NovaCode starts and is not hot-reloaded. After
-saving changes to `opencode.json`, an agent file, a skill, a plugin, or any
+saving changes to `novacode.json`, an agent file, a skill, a plugin, or any
 other config-time file, **tell the user to quit and restart NovaCode** for
 the changes to take effect. The running session will keep using the
 already-loaded config until then.
@@ -54,15 +45,15 @@ already-loaded config until then.
 | External skills (auto-loaded) | `~/.claude/skills/<name>/SKILL.md`, `~/.agents/skills/<name>/SKILL.md` |
 
 Configs from each scope are deep-merged. Project overrides global. Unknown
-top-level keys in `opencode.json` are rejected with `ConfigInvalidError`.
+top-level keys in `novacode.json` are rejected with `ConfigInvalidError`.
 
-## opencode.json
+## novacode.json
 
 Every field is optional.
 
 ```json
 {
-  "$schema": "https://opencode.ai/config.json",
+  "$schema": "https://novacode.ai/config.json",
   "username": "string",
   "model": "provider/model-id",
   "small_model": "provider/model-id",
@@ -75,7 +66,7 @@ Every field is optional.
   "instructions": ["AGENTS.md", "docs/style.md"],
 
   "skills": {
-    "paths": [".opencode/skills", "/abs/path/to/skills"],
+    "paths": [".novacode/skills", "/abs/path/to/skills"],
     "urls": ["https://example.com/.well-known/skills/"]
   },
 

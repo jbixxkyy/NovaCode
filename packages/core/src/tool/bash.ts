@@ -59,6 +59,11 @@ const modelOutput = (output: Output) => {
 const isTimeout = (error: AppProcess.AppProcessError) =>
   error.cause instanceof Error && error.cause.message === "Timed out"
 
+const denied = (action: string) => (error: unknown) =>
+  new ToolFailure({
+    message: error instanceof PermissionV2.CorrectedError ? error.feedback : `Permission denied: ${action}`,
+  })
+
 /**
  * Minimal V2 core shell boundary. Keep parity debt visible without pulling the
  * legacy shell runtime into core.
@@ -78,20 +83,38 @@ const isTimeout = (error: AppProcess.AppProcessError) =>
 
 const shellTokens = (command: string) => command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? []
 const unquote = (value: string) => value.replace(/^(['"])(.*)\1$/, "$2")
+
+const pathCandidate = (value: string, cwd: string) => {
+  if (value === "~") return process.env.HOME ?? process.env.USERPROFILE
+  if (value.startsWith("~/") || value.startsWith("~\\")) {
+    const home = process.env.HOME ?? process.env.USERPROFILE
+    if (!home) return
+    return path.join(home, value.slice(2))
+  }
+  // Windows treats `/s` as absolute; those are flags, not filesystem roots.
+  if (process.platform === "win32" && /^\/[^/\\]*$/.test(value)) return
+  if (path.isAbsolute(value)) return value
+  if (value.includes("/") || value.includes("\\")) return path.resolve(cwd, value)
+}
+
 const externalCommandDirectories = Effect.fn("BashTool.externalCommandDirectories")(function* (
   fs: FSUtil.Interface,
+  mutation: LocationMutation.Interface,
   command: string,
   cwd: string,
 ) {
-  const directories = new Set<string>()
+  const directories = new Map<string, LocationMutation.ExternalDirectoryAuthorization>()
   for (const token of shellTokens(command)) {
     const value = unquote(token).replace(/[;,|&]+$/, "")
-    if (!path.isAbsolute(value)) continue
-    const resolved = yield* fs.resolve(value)
+    const candidate = pathCandidate(value, cwd)
+    if (!candidate) continue
+    const resolved = yield* fs.resolve(candidate)
     if (FSUtil.contains(cwd, resolved)) continue
-    directories.add(yield* fs.resolve(path.dirname(resolved)))
+    const external = (yield* mutation.resolve({ path: resolved, kind: "file" })).externalDirectory
+    if (!external) continue
+    directories.set(external.resource, external)
   }
-  return [...directories]
+  return [...directories.values()]
 })
 
 const layer = Layer.effectDiscard(
@@ -106,7 +129,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         [name]: Tool.make({
-          description: `Execute one shell command string with the host user's filesystem, process, and network authority. The active Location is the default working directory. Relative workdir values resolve from that Location. External workdir values require external_directory approval; best-effort command-argument path warnings are advisory only. Timeout values are milliseconds (default: ${DEFAULT_TIMEOUT_MS}; maximum: ${MAX_TIMEOUT_MS}). Uses the configured shell when set; otherwise uses /bin/sh on POSIX and COMSPEC or cmd.exe on Windows.`,
+          description: `Execute one shell command string with the host user's filesystem, process, and network authority. The active Location is the default working directory. Relative workdir values resolve from that Location. External workdir values and command-argument path tokens that escape the working directory require external_directory approval. Timeout values are milliseconds (default: ${DEFAULT_TIMEOUT_MS}; maximum: ${MAX_TIMEOUT_MS}). Uses the configured shell when set; otherwise uses /bin/sh on POSIX and COMSPEC or cmd.exe on Windows.`,
           input: Input,
           output: Output,
           structured: StructuredOutput,
@@ -129,24 +152,35 @@ const layer = Layer.effectDiscard(
               const target = yield* mutation.resolve({ path: input.workdir ?? ".", kind: "directory" })
               const external = target.externalDirectory
               if (external)
-                yield* permission.assert({
-                  ...LocationMutation.externalDirectoryPermission(external),
+                yield* permission
+                  .assert({
+                    ...LocationMutation.externalDirectoryPermission(external),
+                    sessionID: context.sessionID,
+                    agent: context.agent,
+                    source,
+                  })
+                  .pipe(Effect.mapError(denied("external_directory")))
+              for (const found of yield* externalCommandDirectories(fs, mutation, input.command, target.canonical)) {
+                if (external && found.resource === external.resource) continue
+                yield* permission
+                  .assert({
+                    ...LocationMutation.externalDirectoryPermission(found),
+                    sessionID: context.sessionID,
+                    agent: context.agent,
+                    source,
+                  })
+                  .pipe(Effect.mapError(denied("external_directory")))
+              }
+              yield* permission
+                .assert({
+                  action: name,
+                  resources: [input.command],
+                  save: [input.command],
                   sessionID: context.sessionID,
                   agent: context.agent,
                   source,
                 })
-              const warnings = (yield* externalCommandDirectories(fs, input.command, target.canonical)).map(
-                (directory) =>
-                  `Command argument references external directory ${path.join(directory, "*").replaceAll("\\", "/")}. Bash runs with host-user filesystem, process, and network authority; this scan is advisory only.`,
-              )
-              yield* permission.assert({
-                action: name,
-                resources: [input.command],
-                save: [input.command],
-                sessionID: context.sessionID,
-                agent: context.agent,
-                source,
-              })
+                .pipe(Effect.mapError(denied(name)))
 
               if ((yield* fs.stat(target.canonical)).type !== "Directory")
                 return yield* Effect.fail(new Error(`Working directory is not a directory: ${target.canonical}`))
@@ -179,7 +213,6 @@ const layer = Layer.effectDiscard(
                   output: `Command exceeded timeout of ${timeout} ms. Retry with a larger timeout if the command is expected to take longer.`,
                   truncated: false,
                   timeout: true,
-                  ...(warnings.length ? { warnings } : {}),
                 }
               }
 
@@ -191,9 +224,14 @@ const layer = Layer.effectDiscard(
                 exit: result.exitCode,
                 output: notice ? `${output}\n\n${notice}` : output,
                 truncated: result.outputTruncated === true,
-                ...(warnings.length ? { warnings } : {}),
               }
-            }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to execute command: ${input.command}` }))),
+            }).pipe(
+              Effect.mapError((error) =>
+                error instanceof ToolFailure
+                  ? error
+                  : new ToolFailure({ message: `Unable to execute command: ${input.command}` }),
+              ),
+            ),
         }),
       })
       .pipe(Effect.orDie)

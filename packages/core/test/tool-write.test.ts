@@ -256,7 +256,7 @@ describe("WriteTool", () => {
             ),
           ).toEqual({
             type: "error",
-            value: `Unable to write ${external}`,
+            value: "Permission denied: external_directory",
           })
           expect(assertions.map((input) => input.action)).toEqual(["external_directory"])
           expect(writes).toEqual([])
@@ -269,7 +269,7 @@ describe("WriteTool", () => {
             ),
           ).toEqual({
             type: "error",
-            value: "Unable to write denied.txt",
+            value: "Permission denied: edit",
           })
           expect(assertions.map((input) => input.action)).toEqual(["edit"])
           expect(writes).toEqual([])

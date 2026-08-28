@@ -54,6 +54,11 @@ export const toModelOutput = (skill: SkillV2.Info, files: ReadonlyArray<string>)
 const unableToLoad = (name: string, error?: unknown) =>
   new ToolFailure({ message: `Unable to load skill ${name}`, error })
 
+const denied = (error: unknown) =>
+  new ToolFailure({
+    message: error instanceof PermissionV2.CorrectedError ? error.feedback : "Permission denied: skill",
+  })
+
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const tools = yield* Tools.Service
@@ -73,14 +78,16 @@ const layer = Layer.effectDiscard(
               const skill = current.find((skill) => skill.name === input.name)
               if (!skill) return yield* unableToLoad(input.name)
               return yield* Effect.gen(function* () {
-                yield* permission.assert({
-                  action: name,
-                  resources: [skill.name],
-                  save: [skill.name],
-                  sessionID: context.sessionID,
-                  agent: context.agent,
-                  source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
-                })
+                yield* permission
+                  .assert({
+                    action: name,
+                    resources: [skill.name],
+                    save: [skill.name],
+                    sessionID: context.sessionID,
+                    agent: context.agent,
+                    source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
+                  })
+                  .pipe(Effect.mapError(denied))
                 const directory = path.dirname(skill.location)
                 const files =
                   path.basename(skill.location) === "SKILL.md"
@@ -94,7 +101,9 @@ const layer = Layer.effectDiscard(
                   directory,
                   output: toModelOutput(skill, files),
                 }
-              }).pipe(Effect.mapError((error) => unableToLoad(input.name, error)))
+              }).pipe(
+                Effect.mapError((error) => (error instanceof ToolFailure ? error : unableToLoad(input.name, error))),
+              )
             }),
         }),
       })

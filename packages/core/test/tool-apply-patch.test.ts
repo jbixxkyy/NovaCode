@@ -202,6 +202,31 @@ describe("ApplyPatchTool", () => {
     ),
   )
 
+  it.live("does not apply when edit approval is denied", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        denyAction = "edit"
+        return withTool(tmp.path, (registry) =>
+          executeTool(
+            registry,
+            call("*** Begin Patch\n*** Add File: blocked.txt\n+nope\n*** End Patch"),
+          ),
+        ).pipe(
+          Effect.andThen((result) =>
+            Effect.gen(function* () {
+              expect(result).toEqual({ type: "error", value: "Permission denied: edit" })
+              expect(assertions.map((item) => item.action)).toEqual(["edit"])
+              expect(yield* exists(path.join(tmp.path, "blocked.txt"))).toBe(false)
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
   it.live("rejects moves before applying any hunk", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),

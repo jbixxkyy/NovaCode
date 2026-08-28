@@ -293,15 +293,23 @@ describe("BashTool", () => {
         Effect.gen(function* () {
           reset()
           denyAction = "external_directory"
-          yield* withTool(active.path, (registry) =>
-            executeTool(registry, call({ command: "pwd", workdir: outside.path })),
-          )
+          expect(
+            yield* withTool(active.path, (registry) =>
+              executeTool(registry, call({ command: "pwd", workdir: outside.path })),
+            ),
+          ).toEqual({
+            type: "error",
+            value: "Permission denied: external_directory",
+          })
           expect(assertions.map((item) => item.action)).toEqual(["external_directory"])
           expect(runs).toEqual([])
 
           reset()
           denyAction = "bash"
-          yield* withTool(active.path, (registry) => executeTool(registry, call({ command: "pwd" })))
+          expect(yield* withTool(active.path, (registry) => executeTool(registry, call({ command: "pwd" })))).toEqual({
+            type: "error",
+            value: "Permission denied: bash",
+          })
           expect(assertions.map((item) => item.action)).toEqual(["bash"])
           expect(runs).toEqual([])
         }),
@@ -312,36 +320,65 @@ describe("BashTool", () => {
     ),
   )
 
-  it.live("reports external command arguments as advisory warnings without enforcing approval", () =>
+  it.live("enforces external_directory approval for command-argument path tokens", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => Promise.all([tmpdir(), tmpdir()])),
-      ([active, outside]) => {
-        reset()
-        denyAction = "external_directory"
-        const target = path.join(outside.path, "secret.txt")
-        return withTool(active.path, (registry) => settleTool(registry, call({ command: `cat ${target}` }))).pipe(
-          Effect.andThen((settled) =>
-            Effect.sync(() => {
-              expect(assertions.map((item) => item.action)).toEqual(["bash"])
-              expect(runs).toHaveLength(1)
-              expect(settled.output?.structured).toMatchObject({
-                truncated: false,
-              })
-              expect(settled.output?.structured).not.toHaveProperty("warnings")
-              expect(settled.output?.content[1]).toMatchObject({
-                type: "text",
-                text: expect.stringContaining("Warnings:"),
-              })
-            }),
-          ),
-        )
-      },
+      ([active, outside]) =>
+        Effect.gen(function* () {
+          const command = `cat ${path.join(outside.path, "secret.txt")}`
+          const resource = path.join(realpathSync(outside.path), "*").replaceAll("\\", "/")
+
+          reset()
+          denyAction = "external_directory"
+          expect(yield* withTool(active.path, (registry) => executeTool(registry, call({ command })))).toEqual({
+            type: "error",
+            value: "Permission denied: external_directory",
+          })
+          expect(assertions.map((item) => item.action)).toEqual(["external_directory"])
+          expect(assertions[0]).toMatchObject({ resources: [resource], save: [resource] })
+          expect(runs).toEqual([])
+
+          reset()
+          yield* withTool(active.path, (registry) => executeTool(registry, call({ command })))
+          expect(assertions.map((item) => item.action)).toEqual(["external_directory", "bash"])
+          expect(assertions[0]).toMatchObject({ resources: [resource], save: [resource] })
+          expect(runs).toHaveLength(1)
+          expect(runs[0]).toMatchObject({ command, cwd: realpathSync(active.path) })
+
+          reset()
+          denyAction = "bash"
+          expect(yield* withTool(active.path, (registry) => executeTool(registry, call({ command })))).toEqual({
+            type: "error",
+            value: "Permission denied: bash",
+          })
+          expect(assertions.map((item) => item.action)).toEqual(["external_directory", "bash"])
+          expect(runs).toEqual([])
+        }),
       ([active, outside]) =>
         Effect.promise(() =>
           Promise.all([active[Symbol.asyncDispose](), outside[Symbol.asyncDispose]()]).then(() => undefined),
         ),
     ),
   )
+
+  it.live("does not treat Windows slash-flags as external directories", () => {
+    if (process.platform !== "win32") return Effect.void
+    return Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        return withTool(tmp.path, (registry) => executeTool(registry, call({ command: "dir /s" }))).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              expect(assertions.map((item) => item.action)).toEqual(["bash"])
+              expect(runs).toHaveLength(1)
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    )
+  })
 
   it.live("keeps non-zero exits useful", () =>
     Effect.acquireUseRelease(

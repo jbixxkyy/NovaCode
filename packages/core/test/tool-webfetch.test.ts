@@ -16,6 +16,7 @@ import { toolIdentity, executeTool, settleTool, toolDefinitions } from "./lib/to
 const sessionID = SessionV2.ID.make("ses_webfetch_test")
 const requests: Array<{ readonly url: string; readonly headers: Record<string, string> }> = []
 const assertions: PermissionV2.AssertInput[] = []
+let deny = false
 let respond = (_request: HttpClientRequest.HttpClientRequest) =>
   Effect.succeed(new Response("hello", { headers: { "content-type": "text/plain" } }))
 
@@ -31,7 +32,10 @@ const http = Layer.succeed(
 const permission = Layer.succeed(
   PermissionV2.Service,
   PermissionV2.Service.of({
-    assert: (input) => Effect.sync(() => assertions.push(input)),
+    assert: (input) =>
+      Effect.sync(() => assertions.push(input)).pipe(
+        Effect.andThen(deny ? Effect.fail(new PermissionV2.BlockedError({ rules: [] })) : Effect.void),
+      ),
     ask: () => Effect.die("unused"),
     reply: () => Effect.die("unused"),
     get: () => Effect.die("unused"),
@@ -51,6 +55,7 @@ const live = testEffect(toolLayer())
 const reset = () => {
   requests.length = 0
   assertions.length = 0
+  deny = false
   respond = () => Effect.succeed(new Response("hello", { headers: { "content-type": "text/plain" } }))
 }
 
@@ -141,6 +146,22 @@ describe("WebFetchTool registration", () => {
         }),
       (server) => Effect.promise(() => server.stop(true)),
     ),
+  )
+
+  it.effect("does not fetch when permission is denied", () =>
+    Effect.gen(function* () {
+      reset()
+      deny = true
+      const registry = yield* ToolRegistry.Service
+      const url = "https://example.com/private"
+
+      expect(yield* executeTool(registry, call({ url, format: "text" }))).toEqual({
+        type: "error",
+        value: "Permission denied: webfetch",
+      })
+      expect(assertions).toMatchObject([{ sessionID, action: "webfetch", resources: [url] }])
+      expect(requests).toEqual([])
+    }),
   )
 
   it.effect("rejects non-HTTP schemes before permission or transport", () =>
@@ -260,7 +281,7 @@ describe("WebFetchTool registration", () => {
       })
       expect(requests).toHaveLength(2)
       expect(requests[0]?.headers["user-agent"]).toContain("Mozilla/5.0")
-      expect(requests[1]?.headers["user-agent"]).toBe("opencode")
+      expect(requests[1]?.headers["user-agent"]).toBe("novacode")
     }),
   )
 

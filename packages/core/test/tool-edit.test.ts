@@ -228,7 +228,7 @@ describe("EditTool", () => {
             ),
           ).toEqual({
             type: "error",
-            value: `Unable to edit ${external}`,
+            value: "Permission denied: external_directory",
           })
           expect(assertions.map((input) => input.action)).toEqual(["external_directory"])
           expect(reads).toBe(0)
@@ -242,7 +242,7 @@ describe("EditTool", () => {
             ),
           ).toEqual({
             type: "error",
-            value: `Unable to edit ${external}`,
+            value: "Permission denied: edit",
           })
           expect(assertions.map((input) => input.action)).toEqual(["external_directory", "edit"])
           expect(reads).toBe(0)
@@ -276,7 +276,7 @@ describe("EditTool", () => {
                   call({ path: "secret.txt", oldString: "not present", newString: "replacement" }),
                 )
 
-                expect(matching).toEqual({ type: "error", value: "Unable to edit secret.txt" })
+                expect(matching).toEqual({ type: "error", value: "Permission denied: edit" })
                 expect(missing).toEqual(matching)
                 expect(assertions.map((input) => input.action)).toEqual(["edit", "edit"])
                 expect(reads).toBe(0)
@@ -361,6 +361,162 @@ describe("EditTool", () => {
     ),
   )
 
+  it.live("matches line-trimmed oldString when file lines have extra indent", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const target = path.join(tmp.path, "indent.txt")
+        return Effect.promise(() => fs.writeFile(target, "    alpha\n    beta\n")).pipe(
+          Effect.andThen(
+            withTool(tmp.path, (registry) =>
+              settleTool(registry, call({ path: "indent.txt", oldString: "alpha\nbeta", newString: "alpha\ngamma" })),
+            ),
+          ),
+          Effect.andThen((settled) =>
+            Effect.gen(function* () {
+              expect(settled.output?.structured).toMatchObject({ replacements: 1 })
+              expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("alpha\ngamma\n")
+              expect(writes).toHaveLength(1)
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("matches a whitespace-normalized single line", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const target = path.join(tmp.path, "spaces.txt")
+        return Effect.promise(() => fs.writeFile(target, "const value = hello    world\n")).pipe(
+          Effect.andThen(
+            withTool(tmp.path, (registry) =>
+              settleTool(registry, call({ path: "spaces.txt", oldString: "hello world", newString: "hello earth" })),
+            ),
+          ),
+          Effect.andThen((settled) =>
+            Effect.gen(function* () {
+              expect(settled.output?.structured).toMatchObject({ replacements: 1 })
+              expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("const value = hello earth\n")
+              expect(writes).toHaveLength(1)
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("matches an indentation-flexible block", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const target = path.join(tmp.path, "block.ts")
+        const original = ["export function run() {", "    if (ready) {", "      start()", "    }", "}"].join("\n")
+        return Effect.promise(() => fs.writeFile(target, original)).pipe(
+          Effect.andThen(
+            withTool(tmp.path, (registry) =>
+              settleTool(
+                registry,
+                call({
+                  path: "block.ts",
+                  oldString: ["if (ready) {", "  start()", "}"].join("\n"),
+                  newString: ["if (ready) {", "  stop()", "}"].join("\n"),
+                }),
+              ),
+            ),
+          ),
+          Effect.andThen((settled) =>
+            Effect.gen(function* () {
+              expect(settled.output?.structured).toMatchObject({ replacements: 1 })
+              expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe(
+                ["export function run() {", "if (ready) {", "  stop()", "}", "}"].join("\n"),
+              )
+              expect(writes).toHaveLength(1)
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("rejects loose block-anchor matches and leaves content unchanged", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const target = path.join(tmp.path, "file.ts")
+        const original = [
+          "function configure() {",
+          "  keepImportantState()",
+          "  removeAllUserData()",
+          "  archiveBackups()",
+          "  auditLog()",
+          "}",
+        ].join("\n")
+        return Effect.promise(() => fs.writeFile(target, original)).pipe(
+          Effect.andThen(
+            withTool(tmp.path, (registry) =>
+              Effect.gen(function* () {
+                expect(
+                  yield* executeTool(
+                    registry,
+                    call({
+                      path: "file.ts",
+                      oldString: ["function configure() {", "  const enabled = true", "}"].join("\n"),
+                      newString: ["function configure() {", "  const enabled = false", "}"].join("\n"),
+                    }),
+                  ),
+                ).toEqual({
+                  type: "error",
+                  value:
+                    "Could not find oldString in the file. It must match exactly, including whitespace and indentation.",
+                })
+                expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe(original)
+                expect(writes).toEqual([])
+              }),
+            ),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("rejects ambiguous fuzzy matches without replaceAll", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const target = path.join(tmp.path, "dup.txt")
+        return Effect.promise(() => fs.writeFile(target, "    foo bar\n    foo bar\n")).pipe(
+          Effect.andThen(
+            withTool(tmp.path, (registry) =>
+              Effect.gen(function* () {
+                expect(
+                  yield* executeTool(registry, call({ path: "dup.txt", oldString: "foo  bar", newString: "baz" })),
+                ).toEqual({
+                  type: "error",
+                  value:
+                    "Found multiple exact matches for oldString. Provide more surrounding context or set replaceAll to true.",
+                })
+                expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("    foo bar\n    foo bar\n")
+                expect(writes).toEqual([])
+              }),
+            ),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
   it.live("preserves BOM and CRLF line endings", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
@@ -423,7 +579,6 @@ test("keeps the locked edit schema, semantics docstring, and deferred TODOs visi
     "absolute external paths retain mutation capability through a separate\n * external_directory approval before edit approval.",
   )
   for (const todo of [
-    "Port V1 fuzzy correction strategies only after exact-edit behavior is established: line-trimmed matching, block-anchor fallback, indentation correction, and similarity-threshold review.",
     "Add formatter integration after V2 formatter runtime exists.",
     "Publish watcher/file-edit events after V2 watcher integration exists.",
     "Add snapshots / undo after design exists.",
@@ -431,4 +586,5 @@ test("keeps the locked edit schema, semantics docstring, and deferred TODOs visi
   ]) {
     expect(source).toContain(`TODO: ${todo}`)
   }
+  expect(source).not.toContain("Port V1 fuzzy correction strategies")
 })

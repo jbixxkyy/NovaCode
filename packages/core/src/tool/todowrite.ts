@@ -22,6 +22,11 @@ export type Output = typeof Output.Type
 
 export const toModelOutput = (output: Output) => JSON.stringify(output.todos, null, 2)
 
+const denied = (error: unknown) =>
+  new ToolFailure({
+    message: error instanceof PermissionV2.CorrectedError ? error.feedback : "Permission denied: todowrite",
+  })
+
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const tools = yield* Tools.Service
@@ -38,17 +43,23 @@ const layer = Layer.effectDiscard(
           toModelOutput: ({ output }) => [{ type: "text", text: toModelOutput(output) }],
           execute: (input, context) =>
             Effect.gen(function* () {
-              yield* permission.assert({
-                action: name,
-                resources: ["*"],
-                save: ["*"],
-                sessionID: context.sessionID,
-                agent: context.agent,
-                source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
-              })
+              yield* permission
+                .assert({
+                  action: name,
+                  resources: ["*"],
+                  save: ["*"],
+                  sessionID: context.sessionID,
+                  agent: context.agent,
+                  source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
+                })
+                .pipe(Effect.mapError(denied))
               yield* todos.update({ sessionID: context.sessionID, todos: input.todos })
               return { todos: input.todos }
-            }).pipe(Effect.mapError(() => new ToolFailure({ message: "Unable to update todos" }))),
+            }).pipe(
+              Effect.mapError((error) =>
+                error instanceof ToolFailure ? error : new ToolFailure({ message: "Unable to update todos" }),
+              ),
+            ),
         }),
       })
       .pipe(Effect.orDie)

@@ -100,6 +100,77 @@ describe("ReadToolFileSystem", () => {
     }),
   )
 
+  it.effect("returns a text page for a small UTF-8 file", () =>
+    Effect.gen(function* () {
+      const { fs, files, directory } = yield* fixture
+      const file = path.join(directory, "hello.txt")
+      yield* files.writeFileString(file, "hello")
+
+      const result = yield* ReadToolFileSystem.read(fs, file, "hello.txt")
+
+      expect(result).toMatchObject({
+        type: "text-page",
+        content: "hello",
+        offset: 1,
+        truncated: false,
+      })
+    }),
+  )
+
+  it.effect("truncates long lines in a small UTF-8 file", () =>
+    Effect.gen(function* () {
+      const { fs, files, directory } = yield* fixture
+      const file = path.join(directory, "long-line.txt")
+      yield* files.writeFileString(file, "a".repeat(2_500))
+
+      const result = yield* ReadToolFileSystem.read(fs, file, "long-line.txt")
+
+      expect(result).toMatchObject({
+        type: "text-page",
+        content: "a".repeat(2_000) + "... (line truncated to 2000 chars)",
+        offset: 1,
+        truncated: false,
+      })
+    }),
+  )
+
+  it.effect("pages a small UTF-8 file that exceeds the line cap", () =>
+    Effect.gen(function* () {
+      const { fs, files, directory } = yield* fixture
+      const file = path.join(directory, "many.txt")
+      const lines = Array.from({ length: ReadToolFileSystem.MAX_READ_LINES + 1 }, (_, index) => `line-${index + 1}`)
+      yield* files.writeFileString(file, lines.join("\n"))
+
+      const result = yield* ReadToolFileSystem.read(fs, file, "many.txt")
+
+      expect(result).toMatchObject({
+        type: "text-page",
+        content: lines.slice(0, ReadToolFileSystem.MAX_READ_LINES).join("\n"),
+        offset: 1,
+        truncated: true,
+        next: ReadToolFileSystem.MAX_READ_LINES + 1,
+      })
+    }),
+  )
+
+  it.effect("returns PDF magic as base64 application/pdf", () =>
+    Effect.gen(function* () {
+      const { fs, files, directory } = yield* fixture
+      const file = path.join(directory, "doc.pdf")
+      const bytes = new TextEncoder().encode("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n")
+      yield* files.writeFile(file, bytes)
+
+      const result = yield* ReadToolFileSystem.read(fs, file, "doc.pdf")
+
+      expect(result).toMatchObject({
+        encoding: "base64",
+        mime: "application/pdf",
+        name: "doc.pdf",
+        content: Buffer.from(bytes).toString("base64"),
+      })
+    }),
+  )
+
   it.effect("preserves the media ingestion limit message", () =>
     Effect.gen(function* () {
       const { fs, files, directory } = yield* fixture

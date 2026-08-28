@@ -7,6 +7,7 @@ import { makeLocationNode } from "../effect/app-node"
 import { FileSystem } from "../filesystem"
 import { FSUtil } from "../fs-util"
 import { Location } from "../location"
+import { LocationMutation } from "../location-mutation"
 import { PermissionV2 } from "../permission"
 import { Ripgrep } from "../ripgrep"
 import { RelativePath } from "../schema"
@@ -20,8 +21,9 @@ export const Input = Schema.Struct({
   pattern: FileSystem.GrepInput.fields.pattern.annotate({
     description: "Regex pattern to search for in file contents",
   }),
-  path: RelativePath.pipe(Schema.optional).annotate({
-    description: "Relative directory to search. Defaults to the active Location.",
+  path: Schema.String.pipe(Schema.optional).annotate({
+    description:
+      "File or directory to search. Relative paths resolve within the active Location. Absolute paths inside that Location are accepted; external absolute paths require external_directory approval. Defaults to the active Location.",
   }),
   include: FileSystem.GrepInput.fields.include.annotate({
     description: 'File glob to include in the search (for example, "*.js" or "*.{ts,tsx}")',
@@ -49,10 +51,16 @@ export const toModelOutput = (output: ModelOutput) => {
   return lines.join("\n")
 }
 
+const denied = (action: string) => (error: unknown) =>
+  new ToolFailure({
+    message: error instanceof PermissionV2.CorrectedError ? error.feedback : `Permission denied: ${action}`,
+  })
+
 /** Grep leaf that defaults its filesystem root to the active Location. */
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const tools = yield* Tools.Service
+    const mutation = yield* LocationMutation.Service
     const fs = yield* FSUtil.Service
     const ripgrep = yield* Ripgrep.Service
     const location = yield* Location.Service
@@ -62,7 +70,7 @@ const layer = Layer.effectDiscard(
       .register({
         [name]: Tool.make({
           description:
-            "Search file contents by regular expression within the active Location or an absolute managed tool-output file. Use a path to narrow the search, include to filter files by glob, and limit to bound the match count. Returns concise file resources, line numbers, and bounded line previews.",
+            "Search file contents by regular expression within the active Location. Relative paths stay inside that Location. Absolute paths inside it are accepted; external absolute paths require external_directory approval. Use a path to narrow the search, include to filter files by glob, and limit to bound the match count. Returns concise file resources, line numbers, and bounded line previews.",
           input: Input,
           output: Output,
           toModelOutput: ({ output }) => [
@@ -78,27 +86,47 @@ const layer = Layer.effectDiscard(
           ],
           execute: (input, context) =>
             Effect.gen(function* () {
-              yield* permission.assert({
-                action: name,
-                resources: [input.pattern],
-                save: ["*"],
-                metadata: {
-                  root: ".",
-                  path: input.path,
-                  include: input.include,
-                  limit: input.limit,
-                },
-                sessionID: context.sessionID,
-                agent: context.agent,
-                source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
-              })
-              const target = path.resolve(location.directory, input.path ?? ".")
-              const info = yield* fs.stat(target).pipe(Effect.catch(() => Effect.succeed(undefined)))
+              const source = {
+                type: "tool" as const,
+                messageID: context.assistantMessageID,
+                callID: context.toolCallID,
+              }
+              const target = yield* mutation.resolve({ path: input.path ?? ".", kind: "directory" })
+              const external = target.externalDirectory
+              if (external)
+                yield* permission
+                  .assert({
+                    ...LocationMutation.externalDirectoryPermission(external),
+                    sessionID: context.sessionID,
+                    agent: context.agent,
+                    source,
+                  })
+                  .pipe(Effect.mapError(denied("external_directory")))
+              yield* permission
+                .assert({
+                  action: name,
+                  resources: [input.pattern],
+                  save: ["*"],
+                  metadata: {
+                    root: input.path ?? ".",
+                    path: input.path,
+                    include: input.include,
+                    limit: input.limit,
+                  },
+                  sessionID: context.sessionID,
+                  agent: context.agent,
+                  source,
+                })
+                .pipe(Effect.mapError(denied(name)))
+              const info = yield* fs.stat(target.canonical)
+              if (info.type !== "Directory" && info.type !== "File")
+                return yield* new ToolFailure({ message: `Unable to grep for ${input.pattern}` })
+              const cwd = info.type === "Directory" ? target.canonical : path.dirname(target.canonical)
               return yield* ripgrep
                 .grep({
-                  cwd: info?.type === "Directory" ? target : path.dirname(target),
+                  cwd,
                   pattern: input.pattern,
-                  file: info?.type === "File" ? path.basename(target) : undefined,
+                  file: info.type === "File" ? path.basename(target.canonical) : undefined,
                   include: input.include,
                   limit: input.limit ?? Number.MAX_SAFE_INTEGER,
                 })
@@ -110,20 +138,20 @@ const layer = Layer.effectDiscard(
                         entry: FileSystem.Entry.make({
                           ...match.entry,
                           path: RelativePath.make(
-                            path.relative(
-                              location.directory,
-                              path.resolve(
-                                info?.type === "Directory" ? target : path.dirname(target),
-                                match.entry.path,
-                              ),
-                            ),
+                            path.relative(location.directory, path.resolve(cwd, match.entry.path)),
                           ),
                         }),
                       }),
                     ),
                   ),
                 )
-            }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to grep for ${input.pattern}` }))),
+            }).pipe(
+              Effect.mapError((error) =>
+                error instanceof ToolFailure
+                  ? error
+                  : new ToolFailure({ message: `Unable to grep for ${input.pattern}` }),
+              ),
+            ),
         }),
       })
       .pipe(Effect.orDie)
@@ -133,5 +161,5 @@ const layer = Layer.effectDiscard(
 export const node = makeLocationNode({
   name: "tool/grep",
   layer,
-  deps: [ToolRegistry.node, FSUtil.node, Ripgrep.node, Location.node, PermissionV2.node],
+  deps: [ToolRegistry.node, LocationMutation.node, FSUtil.node, Ripgrep.node, Location.node, PermissionV2.node],
 })

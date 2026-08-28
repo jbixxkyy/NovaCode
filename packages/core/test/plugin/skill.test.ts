@@ -22,7 +22,7 @@ describe("SkillPlugin.Plugin", () => {
         }),
       )
       expect(list.find((item) => item.name === "customize-opencode")).toBeUndefined()
-      expect(list.find((item) => item.name === "customize-novacode")?.description).toContain("Do not use for OpenCode")
+      expect(list.find((item) => item.name === "customize-novacode")?.description).toContain("novacode.json")
     }),
   )
 })

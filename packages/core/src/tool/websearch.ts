@@ -17,6 +17,11 @@ import { ToolRegistry } from "./registry"
 
 export const name = "websearch"
 export const NO_RESULTS = "No search results found. Please try a different query."
+
+const denied = (error: unknown) =>
+  new ToolFailure({
+    message: error instanceof PermissionV2.CorrectedError ? error.feedback : "Permission denied: websearch",
+  })
 export const EXA_URL = "https://mcp.exa.ai/mcp"
 export const PARALLEL_URL = "https://search.parallel.ai/mcp"
 export const MAX_NUM_RESULTS = 20
@@ -206,15 +211,17 @@ const layer = Layer.effectDiscard(
           execute: (input, context) => {
             const provider = selectProvider(context.sessionID, config, config.provider)
             return Effect.gen(function* () {
-              yield* permission.assert({
-                action: name,
-                resources: [input.query],
-                save: ["*"],
-                metadata: { ...input, provider },
-                sessionID: context.sessionID,
-                agent: context.agent,
-                source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
-              })
+              yield* permission
+                .assert({
+                  action: name,
+                  resources: [input.query],
+                  save: ["*"],
+                  metadata: { ...input, provider },
+                  sessionID: context.sessionID,
+                  agent: context.agent,
+                  source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
+                })
+                .pipe(Effect.mapError(denied))
 
               const text =
                 provider === "exa"
@@ -237,7 +244,7 @@ const layer = Layer.effectDiscard(
                         // V2 invocation context does not safely expose the model yet.
                       },
                       {
-                        "User-Agent": `opencode/${InstallationVersion}`,
+                        "User-Agent": `novacode/${InstallationVersion}`,
                         ...(config.parallelApiKey ? { Authorization: `Bearer ${config.parallelApiKey}` } : {}),
                       },
                     )
@@ -245,7 +252,13 @@ const layer = Layer.effectDiscard(
                 provider,
                 text: text ?? NO_RESULTS,
               }
-            }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to search the web for ${input.query}` })))
+            }).pipe(
+              Effect.mapError((error) =>
+                error instanceof ToolFailure
+                  ? error
+                  : new ToolFailure({ message: `Unable to search the web for ${input.query}` }),
+              ),
+            )
           },
         }),
       })

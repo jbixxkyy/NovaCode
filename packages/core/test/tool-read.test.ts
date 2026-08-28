@@ -25,6 +25,7 @@ import { toolIdentity, executeTool, settleTool, toolDefinitions } from "./lib/to
 const assertions: PermissionV2.AssertInput[] = []
 const missingPath = "__missing_read_target__.txt"
 const missingAbsolutePath = path.join(process.cwd(), missingPath)
+const inspectCalls: AbsolutePath[] = []
 const readCalls: {
   input: AbsolutePath
   page: ReadToolFileSystem.PageInput
@@ -44,7 +45,10 @@ let configEntries: Config.Entry[] = []
 const reader = Layer.succeed(
   ReadToolFileSystem.Service,
   ReadToolFileSystem.Service.of({
-    inspect: () => (resolveFailure === undefined ? Effect.succeed(resolvedType) : Effect.die(resolveFailure)),
+    inspect: (input) => {
+      inspectCalls.push(input)
+      return resolveFailure === undefined ? Effect.succeed(resolvedType) : Effect.die(resolveFailure)
+    },
     read: (input, _resource, page = {}) => {
       readCalls.push({ input, page })
       if (readFailure !== undefined) return Effect.fail(readFailure)
@@ -148,6 +152,7 @@ const sessionID = SessionV2.ID.make("ses_read_tool_test")
 describe("ReadTool", () => {
   beforeEach(() => {
     assertions.length = 0
+    inspectCalls.length = 0
     readCalls.length = 0
     listCalls.length = 0
     allow = true
@@ -539,7 +544,26 @@ describe("ReadTool", () => {
           ...toolIdentity,
           call: { type: "tool-call", id: "call-read", name: "read", input: { path: "README.md" } },
         }),
-      ).toEqual({ type: "error", value: "Unable to read README.md" })
+      ).toEqual({ type: "error", value: "Permission denied: read" })
+      expect(inspectCalls).toEqual([])
+      expect(readCalls).toEqual([])
+    }),
+  )
+
+  it.effect("does not inspect when external_directory is denied", () =>
+    Effect.gen(function* () {
+      allow = false
+      const registry = yield* ToolRegistry.Service
+      const external = path.join(path.parse(process.cwd()).root, "external-read", "notes.txt")
+
+      expect(
+        yield* executeTool(registry, {
+          sessionID,
+          ...toolIdentity,
+          call: { type: "tool-call", id: "call-external-denied", name: "read", input: { path: external } },
+        }),
+      ).toEqual({ type: "error", value: "Permission denied: external_directory" })
+      expect(inspectCalls).toEqual([])
       expect(readCalls).toEqual([])
     }),
   )
@@ -594,7 +618,8 @@ describe("ReadTool", () => {
           ...toolIdentity,
           call: { type: "tool-call", id: "call-read-directory-denied", name: "read", input: { path: "src" } },
         }),
-      ).toEqual({ type: "error", value: "Unable to read src" })
+      ).toEqual({ type: "error", value: "Permission denied: read" })
+      expect(inspectCalls).toEqual([])
       expect(listCalls).toEqual([])
     }),
   )
@@ -648,6 +673,71 @@ describe("ReadTool", () => {
       expect(readCalls).toEqual([
         { input: AbsolutePath.make(path.join(process.cwd(), "large.txt")), page: { offset: 2, limit: 1 } },
       ])
+    }),
+  )
+
+  it.effect("returns a small PDF as a native file attachment", () =>
+    Effect.gen(function* () {
+      const pdf = Buffer.from("%PDF-1.4\n").toString("base64")
+      const mime = "application/pdf"
+      const uri = `data:${mime};base64,${pdf}`
+      readResult = {
+        uri: "file:///doc.pdf",
+        name: "doc.pdf",
+        content: pdf,
+        encoding: "base64",
+        mime,
+      }
+      const registry = yield* ToolRegistry.Service
+
+      expect(
+        yield* executeTool(registry, {
+          sessionID,
+          ...toolIdentity,
+          call: { type: "tool-call", id: "call-pdf", name: "read", input: { path: "doc.pdf" } },
+        }),
+      ).toEqual({
+        type: "content",
+        value: [
+          { type: "text", text: "PDF read successfully" },
+          { type: "file", uri, mime, name: "doc.pdf" },
+        ],
+      })
+
+      const settled = yield* settleTool(registry, {
+        sessionID,
+        ...toolIdentity,
+        call: { type: "tool-call", id: "call-pdf-settle", name: "read", input: { path: "doc.pdf" } },
+      })
+      expect(settled.output?.structured).toMatchObject({
+        uri: "file:///doc.pdf",
+        name: "doc.pdf",
+        mime,
+        encoding: "base64",
+      })
+      expect(settled.output?.content).toMatchObject([
+        { type: "text", text: "PDF read successfully" },
+        { type: "file", mime, uri },
+      ])
+    }),
+  )
+
+  it.effect("keeps typed filesystem error messages", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const call = (id: string) =>
+        executeTool(registry, {
+          sessionID,
+          ...toolIdentity,
+          call: { type: "tool-call" as const, id, name: "read", input: { path: "target" } },
+        })
+
+      readFailure = new ReadToolFileSystem.OffsetOutOfRangeError({ offset: 9 })
+      expect(yield* call("call-offset")).toEqual({ type: "error", value: "Offset 9 is out of range" })
+      readFailure = new ReadToolFileSystem.MalformedUtf8Error({ resource: "bad.txt" })
+      expect(yield* call("call-utf8")).toEqual({ type: "error", value: "File is not valid UTF-8: bad.txt" })
+      readFailure = new ReadToolFileSystem.PathKindError({ resource: "socket", expected: "a file" })
+      expect(yield* call("call-kind")).toEqual({ type: "error", value: "Path is not a file: socket" })
     }),
   )
 

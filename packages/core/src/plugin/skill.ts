@@ -11,7 +11,7 @@ import customizeNovacodeContent from "./skill/customize-novacode.md" with { type
 export const CustomizeNovacodeContent = customizeNovacodeContent
 export const CustomizeNovacodeName = "customize-novacode"
 export const CustomizeNovacodeDescription =
-  "Use ONLY when the user is editing or creating NovaCode configuration: NovaCode's opencode.json, opencode.jsonc, files under .opencode/, or files under ~/.config/novacode/. Also use when creating or fixing NovaCode agents, subagents, commands, skills, plugins, MCP servers, or permission rules. Do not use for OpenCode. Do not use for the user's own application code."
+  "Use ONLY when the user is editing or creating NovaCode configuration: novacode.json, novacode.jsonc, files under .novacode/, or files under ~/.config/novacode/. Also use when creating or fixing NovaCode agents, subagents, commands, skills, plugins, MCP servers, or permission rules. Do not use for the user's own application code."
 
 export const Plugin = define({
   id: "skill",
