@@ -80,7 +80,9 @@ export function WindowsAppMenu(props: {
         <DropdownMenu.Content class="desktop-app-menu">
           <DropdownMenu.Group>
             <DropdownMenu.GroupLabel class="desktop-app-menu-heading">{language.t("desktop.menu.app")}</DropdownMenu.GroupLabel>
-            {DESKTOP_MENU.filter((menu) => desktopMenuVisible(menu, "windows")).map((menu) => (
+            {DESKTOP_MENU.filter(
+              (menu) => desktopMenuVisible(menu, "windows") && (import.meta.env.DEV || menu.id !== "developer"),
+            ).map((menu) => (
               <DesktopMenuSubmenu label={language.t(menu.labelKey)}>
                 {menu.items
                   ?.filter((entry) => desktopMenuVisible(entry, "windows"))

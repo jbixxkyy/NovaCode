@@ -347,11 +347,60 @@
 
 [data-component="reasoning-part"] {
   width: 100%;
+  border: 0.5px solid var(--v2-border-border-base);
+  border-radius: 8px;
+  background: var(--v2-background-bg-layer-02);
+  border-left: 2px solid var(--v2-border-border-strong);
+  overflow: hidden;
   color: var(--v2-text-text-muted);
   line-height: var(--line-height-normal);
 
-  [data-component="markdown"] {
-    margin-top: 16px;
+  [data-slot="reasoning-header"] {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    background: var(--v2-background-bg-base);
+    border-bottom: 0.5px solid var(--v2-border-border-base);
+    font-family: var(--font-family-sans);
+    font-size: 12px;
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-large);
+    color: var(--v2-text-text-muted);
+    user-select: none;
+  }
+
+  &[data-streaming] [data-slot="reasoning-header"] {
+    border-bottom-color: transparent;
+    background: transparent;
+  }
+
+  [data-slot="reasoning-header-icon"] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    color: var(--v2-text-text-faint);
+
+    [data-component="icon"] {
+      width: 14px;
+      height: 14px;
+    }
+
+    [data-component="spinner"] {
+      width: 14px;
+      height: 14px;
+    }
+  }
+
+  [data-slot="reasoning-body"] {
+    padding: 12px;
+  }
+
+  [data-slot="reasoning-body"] [data-component="markdown"] {
+    margin-top: 0;
     font-style: normal;
     font-size: 13px;
     color: var(--v2-text-text-muted);
@@ -362,12 +411,19 @@
     }
 
     p:has(strong) {
-      margin-top: 24px;
+      margin-top: 16px;
       margin-bottom: 0;
 
       &:first-child {
         margin-top: 0;
       }
+    }
+
+    /* keep code blocks readable inside the muted card */
+    pre {
+      background: var(--v2-background-bg-base) !important;
+      border: 0.5px solid var(--v2-border-border-base);
+      border-radius: 6px;
     }
   }
 }
@@ -375,6 +431,30 @@
 @media (prefers-color-scheme: dark) {
   [data-component="reasoning-part"] [data-component="markdown"] :not(pre) > code {
     opacity: 0.6;
+  }
+}
+
+body:not([data-new-layout]) {
+  [data-component="reasoning-part"] {
+    background: var(--surface-weak);
+    border: 1px solid var(--border-weak-base);
+    border-left: 2px solid var(--border-strong-base);
+
+    [data-slot="reasoning-header"] {
+      background: var(--background-stronger);
+      border-bottom: 1px solid var(--border-weaker-base);
+      color: var(--text-weak);
+    }
+
+    &[data-streaming] [data-slot="reasoning-header"] {
+      background: transparent;
+      border-bottom-color: transparent;
+    }
+
+    [data-slot="reasoning-body"] [data-component="markdown"] pre {
+      background: var(--background-stronger) !important;
+      border: 1px solid var(--border-weak-base);
+    }
   }
 }
 
@@ -428,10 +508,12 @@
   unicode-bidi: isolate;
   width: 100%;
   border: 0.5px solid var(--v2-border-border-base);
-  border-radius: 6px;
-  background: transparent;
+  border-left: 2px solid var(--v2-border-border-strong);
+  border-radius: 8px;
+  background: var(--v2-background-bg-layer-02);
   position: relative;
   overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 
   [data-slot="bash-copy"] {
     position: absolute;
@@ -440,6 +522,7 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease;
+    z-index: 1;
   }
 
   &:hover [data-slot="bash-copy"],
@@ -451,18 +534,25 @@
   [data-slot="bash-scroll"] {
     width: 100%;
     overflow-y: auto;
-    overflow-x: hidden;
-    max-height: 240px;
+    overflow-x: auto;
+    max-height: 320px;
 
-    scrollbar-width: none;
+    scrollbar-width: thin;
+    scrollbar-color: var(--v2-border-border-base) transparent;
     &::-webkit-scrollbar {
-      display: none;
+      height: 6px;
+      width: 6px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: var(--v2-border-border-base);
+      border-radius: 999px;
     }
   }
 
   [data-slot="bash-pre"] {
     margin: 0;
     padding: 12px;
+    min-width: 0;
   }
 
   [data-slot="bash-pre"] code {
@@ -472,7 +562,90 @@
     line-height: var(--line-height-large);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    word-break: break-word;
+    display: block;
+    min-width: 0;
   }
+
+  [data-slot="bash-output-content"] {
+    border-top: 0.5px solid var(--v2-border-border-base);
+    padding: 10px 12px;
+    background: var(--v2-background-bg-base);
+  }
+
+  [data-slot="bash-output-label"] {
+    font-family: var(--font-family-sans);
+    font-size: 10px;
+    font-weight: var(--font-weight-medium);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--v2-text-text-faint);
+    margin-bottom: 6px;
+    user-select: none;
+  }
+
+  [data-slot="bash-output-text"] {
+    margin: 0;
+    font-family: var(--font-family-mono);
+    font-feature-settings: var(--font-family-mono--font-feature-settings);
+    font-size: 13px;
+    line-height: var(--line-height-large);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    color: var(--v2-text-text-muted);
+  }
+}
+
+/* Shell card wrapper — matches reasoning card polish */
+[data-component="tool-part-wrapper"]:has([data-component="bash-output"]) {
+  border: 0.5px solid var(--v2-border-border-base);
+  border-radius: 8px;
+  background: var(--v2-background-bg-base);
+  border-left: 2px solid var(--v2-icon-icon-accent);
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-component="tool-part-wrapper"]:has([data-component="bash-output"]) [data-component="collapsible"] {
+  gap: 0;
+}
+
+[data-component="tool-part-wrapper"]:has([data-component="bash-output"]) [data-slot="collapsible-trigger"] {
+  padding: 9px 12px;
+  background: var(--v2-background-bg-base);
+  border-bottom: 0.5px solid transparent;
+}
+
+[data-component="tool-part-wrapper"]:has([data-component="bash-output"]) [data-slot="collapsible-trigger"][aria-expanded="true"] {
+  border-bottom-color: var(--v2-border-border-base);
+  background: var(--v2-background-bg-base);
+}
+
+[data-component="tool-part-wrapper"]:has([data-component="bash-output"]) [data-component="bash-output"] {
+  border: none;
+  border-radius: 0;
+  border-left: none;
+  box-shadow: none;
+  background: var(--v2-background-bg-layer-02);
+}
+
+body:not([data-new-layout]) [data-component="tool-part-wrapper"]:has([data-component="bash-output"]) {
+  background: var(--surface-weak);
+  border: 1px solid var(--border-weak-base);
+  border-left: 2px solid var(--border-strong-base);
+}
+
+body:not([data-new-layout])
+  [data-component="tool-part-wrapper"]:has([data-component="bash-output"])
+  [data-slot="collapsible-trigger"] {
+  background: var(--background-stronger);
+}
+
+body:not([data-new-layout])
+  [data-component="tool-part-wrapper"]:has([data-component="bash-output"])
+  [data-component="bash-output"] {
+  background: var(--surface-weak);
 }
 
 [data-component="edit-trigger"],

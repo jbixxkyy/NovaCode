@@ -39,7 +39,12 @@ export type PromptInputV2ComposerProps = {
   borderUnderlay?: boolean
 }
 
-export type PromptInputV2ControllerProps = Omit<PromptInputProps, "class" | "submission">
+export type PromptInputV2ControllerProps = Omit<PromptInputProps, "class" | "submission"> & {
+  delivery?: {
+    current: () => string
+    onSelect: (mode: string) => void
+  }
+}
 export type PromptInputV2ComposerController = PromptInputV2Interaction & {
   readonly model: PromptInputProps["controls"]["model"]
 }
@@ -400,6 +405,7 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
         onSelect: (value) => props.controls.model.selection.variant.set(value === "default" ? undefined : value),
         keybind: () => command.keybindParts("model.variant.cycle"),
       },
+      delivery: props.delivery,
       submit: {
         stopping,
         working,

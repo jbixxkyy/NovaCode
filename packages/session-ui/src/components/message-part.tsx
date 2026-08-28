@@ -1885,16 +1885,45 @@ PART_MAPPING["file"] = function FilePartDisplay(props) {
 
 PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   const data = useData()
+  const i18n = useI18n()
   const part = () => props.part as ReasoningPart
   const streaming = createMemo(
     () => props.message.role === "assistant" && typeof (props.message as AssistantMessage).time.completed !== "number",
   )
-  const text = () => readPartText(data.store.part_text_accum_delta, part())
+  const rawText = () => readPartText(data.store.part_text_accum_delta, part())
+  const isDemo = () => typeof window !== "undefined" && window.localStorage.getItem("demoReasoning") === "1"
+  const text = () => {
+    const v = rawText()
+    if (v) return v
+    if (isDemo()) return "Demo reasoning: Verifying ports 4444/4321 are free with Get-NetTCPConnection → checking bun version → starting packages/app on :4444 and packages/web on :4321 with Start-Process -WindowStyle Hidden. If nothing is listening, proceed to launch both."
+    return ""
+  }
 
   return (
     <Show when={text()}>
-      <div data-component="reasoning-part" data-timeline-part-id={part().id}>
-        <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} />
+      <div
+        data-component="reasoning-part"
+        data-timeline-part-id={part().id}
+        data-streaming={streaming() ? "" : undefined}
+      >
+        <div data-slot="reasoning-header">
+          <span data-slot="reasoning-header-icon">
+            <Show when={streaming()} fallback={<Icon name="brain" size="small" />}>
+              <Spinner />
+            </Show>
+          </span>
+          <span data-slot="reasoning-header-title">
+            <TextShimmer
+              text={
+                streaming() ? i18n.t("ui.sessionTurn.status.thinking") : i18n.t("ui.sessionTurn.status.gatheringThoughts")
+              }
+              active={streaming()}
+            />
+          </span>
+        </div>
+        <div data-slot="reasoning-body">
+          <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} />
+        </div>
       </div>
     </Show>
   )
@@ -2215,15 +2244,19 @@ ToolRegistry.register({
     const i18n = useI18n()
     const pending = () => props.status === "pending" || props.status === "running"
     const sawPending = pending()
-    const text = createMemo(() => {
-      const cmd = props.input.command ?? props.metadata.command ?? ""
-      const out = stripAnsi(props.output || props.metadata.output || "").replace(/\r\n?/g, "\n")
-      return `$ ${cmd}${out ? "\n\n" + out : ""}`
+    const cmd = createMemo(() => (props.input.command ?? props.metadata.command ?? "") as string)
+    const out = createMemo(() => stripAnsi((props.output || props.metadata.output || "") as string).replace(/\r\n?/g, "\n"))
+    const hasOutput = createMemo(() => !!out().trim())
+    const commandText = createMemo(() => `$ ${cmd()}`)
+    const fullText = createMemo(() => {
+      const c = cmd()
+      const o = out()
+      return `$ ${c}${o ? "\n\n" + o : ""}`
     })
     const [copied, setCopied] = createSignal(false)
 
     const handleCopy = async () => {
-      const content = text()
+      const content = fullText()
       if (!content) return
       if (await writeClipboard(content)) {
         setCopied(true)
@@ -2242,8 +2275,8 @@ ToolRegistry.register({
               <span data-slot="basic-tool-tool-title">
                 <TextShimmer text={i18n.t("ui.tool.shell")} active={pending()} />
               </span>
-              <Show when={!open() && props.input.command}>
-                <ShellSubmessage text={props.input.command} animate={sawPending} />
+              <Show when={!open() && cmd()}>
+                <ShellSubmessage text={cmd()} animate={sawPending} />
               </Show>
             </div>
           </div>
@@ -2270,8 +2303,16 @@ ToolRegistry.register({
             aria-label={i18n.t("ui.scrollView.ariaLabel")}
           >
             <pre data-slot="bash-pre">
-              <code>{text()}</code>
+              <code>{commandText()}</code>
             </pre>
+            <Show when={hasOutput()}>
+              <div data-slot="bash-output-content">
+                <div data-slot="bash-output-label">Output</div>
+                <pre data-slot="bash-output-text">
+                  <code>{out()}</code>
+                </pre>
+              </div>
+            </Show>
           </div>
         </div>
       </BasicTool>

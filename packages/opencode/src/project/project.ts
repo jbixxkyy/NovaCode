@@ -10,13 +10,17 @@ import { GlobalBus } from "@/bus/global"
 import { which } from "@opencode-ai/core/util/which"
 import { Command } from "@/command"
 import { InstanceState } from "@/effect/instance-state"
-import { Effect, Layer, Scope, Context, Stream, Types, Schema } from "effect"
+import { DateTime, Effect, Layer, Scope, Context, Stream, Types, Schema } from "effect"
+import path from "path"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { AppProcess } from "@opencode-ai/core/process"
 import { ProjectV2 } from "@opencode-ai/core/project"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
-import { AbsolutePath } from "@opencode-ai/core/schema"
+import { AbsolutePath, RelativePath } from "@opencode-ai/core/schema"
+import { Location } from "@opencode-ai/core/location"
+import { SessionEvent } from "@opencode-ai/core/session/event"
+import { rewritePathPrefix } from "@opencode-ai/core/util/path"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -76,6 +80,15 @@ export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()("Pro
   projectID: ProjectV2.ID,
 }) {}
 
+export class RelocateMismatchError extends Schema.TaggedErrorClass<RelocateMismatchError>()(
+  "Project.RelocateMismatchError",
+  {
+    expected: ProjectV2.ID,
+    actual: ProjectV2.ID,
+    directory: Schema.String,
+  },
+) {}
+
 // ---------------------------------------------------------------------------
 // Effect service
 // ---------------------------------------------------------------------------
@@ -88,6 +101,10 @@ export interface Interface {
    */
   readonly init: () => Effect.Effect<void>
   readonly fromDirectory: (directory: string) => Effect.Effect<{ project: Info; sandbox: string }>
+  readonly relocate: (input: {
+    projectID: ProjectV2.ID
+    directory: string
+  }) => Effect.Effect<Info, NotFoundError | RelocateMismatchError>
   readonly discover: (input: Info) => Effect.Effect<void>
   readonly list: () => Effect.Effect<Info[]>
   readonly get: (id: ProjectV2.ID) => Effect.Effect<Info | undefined>
@@ -210,6 +227,77 @@ const layer = Layer.effect(
         )
     })
 
+    const remapWorktree = Effect.fn("Project.remapWorktree")(function* (input: {
+      projectID: ProjectV2.ID
+      from: string
+      to: string
+    }) {
+      if (input.from === input.to) return
+      const sessions = yield* db
+        .select()
+        .from(SessionTable)
+        .where(eq(SessionTable.project_id, input.projectID))
+        .all()
+        .pipe(Effect.orDie)
+
+      for (const session of sessions) {
+        const next = rewritePathPrefix(input.from, input.to, session.directory)
+        if (next === session.directory) continue
+        const directory = AbsolutePath.make(next)
+        yield* db
+          .update(SessionTable)
+          .set({
+            directory,
+            time_updated: sql`${SessionTable.time_updated}`,
+          })
+          .where(eq(SessionTable.id, session.id))
+          .run()
+          .pipe(Effect.orDie)
+        const relative = path.relative(input.to, next).replaceAll("\\", "/")
+        yield* events
+          .publish(SessionEvent.Moved, {
+            sessionID: session.id,
+            location: Location.Ref.make({ directory }),
+            subdirectory: RelativePath.make(relative.startsWith("..") ? "" : relative),
+            timestamp: DateTime.makeUnsafe(session.time_updated),
+          })
+          .pipe(Effect.catchCause((cause) => Effect.logWarning("session relocate event failed", { cause })))
+      }
+
+      const dirs = yield* projectDirectories.list(input.projectID)
+      for (const dir of dirs) {
+        const next = rewritePathPrefix(input.from, input.to, dir.directory)
+        if (next === dir.directory) continue
+        yield* projectDirectories.remove({ projectID: input.projectID, directory: dir.directory })
+        yield* projectDirectories.create({
+          projectID: input.projectID,
+          directory: AbsolutePath.make(next),
+          strategy: dir.strategy,
+        })
+      }
+
+      const row = yield* db.select().from(ProjectTable).where(eq(ProjectTable.id, input.projectID)).get().pipe(Effect.orDie)
+      if (!row) return
+      const worktree = rewritePathPrefix(input.from, input.to, row.worktree)
+      const sandboxes = [
+        ...new Set(
+          row.sandboxes
+            .map((sandbox) => rewritePathPrefix(input.from, input.to, sandbox))
+            .filter((sandbox) => sandbox !== worktree),
+        ),
+      ]
+      yield* db
+        .update(ProjectTable)
+        .set({
+          worktree: AbsolutePath.make(worktree),
+          sandboxes: sandboxes.map((sandbox) => AbsolutePath.make(sandbox)),
+          time_updated: Date.now(),
+        })
+        .where(eq(ProjectTable.id, input.projectID))
+        .run()
+        .pipe(Effect.orDie)
+    })
+
     const fromDirectory = Effect.fn("Project.fromDirectory")(function* (directory: string) {
       yield* Effect.logInfo("fromDirectory", { directory })
 
@@ -220,7 +308,7 @@ const layer = Layer.effect(
       const projectID = ProjectV2.ID.make(data.id)
       yield* migrateProjectId(data.previous ? ProjectV2.ID.make(data.previous) : undefined, projectID)
       const row = yield* db.select().from(ProjectTable).where(eq(ProjectTable.id, projectID)).get().pipe(Effect.orDie)
-      const existing = row
+      let existing = row
         ? fromRow(row)
         : {
             id: projectID,
@@ -229,6 +317,24 @@ const layer = Layer.effect(
             sandboxes: [] as string[],
             time: { created: Date.now(), updated: Date.now() },
           }
+
+      if (projectID !== ProjectV2.ID.global && existing.worktree !== data.directory) {
+        const worktreeExists = yield* fs.exists(existing.worktree).pipe(Effect.orElseSucceed(() => false))
+        if (!worktreeExists) {
+          yield* remapWorktree({
+            projectID,
+            from: existing.worktree,
+            to: data.directory,
+          })
+          const refreshed = yield* db
+            .select()
+            .from(ProjectTable)
+            .where(eq(ProjectTable.id, projectID))
+            .get()
+            .pipe(Effect.orDie)
+          if (refreshed) existing = fromRow(refreshed)
+        }
+      }
 
       if (flags.experimentalIconDiscovery) yield* discover(existing).pipe(Effect.ignore, Effect.forkIn(scope))
 
@@ -307,6 +413,39 @@ const layer = Layer.effect(
         yield* projectV2.commit({ store: data.vcs.store, id: data.id })
       }
       return { project: result, sandbox: data.vcs ? data.directory : worktree }
+    })
+
+    const relocate = Effect.fn("Project.relocate")(function* (input: { projectID: ProjectV2.ID; directory: string }) {
+      const resolved = yield* projectV2.resolve(AbsolutePath.make(input.directory))
+      if (resolved.id !== input.projectID) {
+        return yield* new RelocateMismatchError({
+          expected: input.projectID,
+          actual: ProjectV2.ID.make(resolved.id),
+          directory: input.directory,
+        })
+      }
+      const current = yield* db
+        .select()
+        .from(ProjectTable)
+        .where(eq(ProjectTable.id, input.projectID))
+        .get()
+        .pipe(Effect.orDie)
+      if (!current) return yield* new NotFoundError({ projectID: input.projectID })
+      yield* remapWorktree({
+        projectID: input.projectID,
+        from: current.worktree,
+        to: resolved.directory,
+      })
+      const next = yield* db
+        .select()
+        .from(ProjectTable)
+        .where(eq(ProjectTable.id, input.projectID))
+        .get()
+        .pipe(Effect.orDie)
+      if (!next) return yield* new NotFoundError({ projectID: input.projectID })
+      const info = fromRow(next)
+      yield* emitUpdated(info)
+      return info
     })
 
     const discover = Effect.fn("Project.discover")(function* (input: Info) {
@@ -450,6 +589,7 @@ const layer = Layer.effect(
     return Service.of({
       init,
       fromDirectory,
+      relocate,
       discover,
       list,
       get,

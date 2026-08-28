@@ -108,7 +108,9 @@ function createServerCtx(
     },
   })
   const sdk = createServerSdkContext(conn, scope)
-  const sync = createServerSyncContext(sdk)
+  const sync = createServerSyncContext(sdk, {
+    onWorktreeRelocated: (from, to) => projects.replaceWorktree(from, to),
+  })
 
   function enrich(project: { worktree: string; expanded: boolean }) {
     const [childStore] = sync.child(project.worktree, { bootstrap: false })

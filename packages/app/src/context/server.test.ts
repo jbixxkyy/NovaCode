@@ -137,6 +137,26 @@ describe("createServerProjects", () => {
     })
   })
 
+  test("replaceWorktree remaps open and last project paths", () => {
+    createRoot((dispose) => {
+      const [scope] = createSignal(ServerScope.local)
+      const [store, setStore] = createStore({ projects: {}, lastProject: {}, recentlyClosed: {} })
+      const projects = createServerProjects({ scope, store, setStore })
+
+      projects.open("/old")
+      projects.open("/other")
+      projects.touch("/old")
+      projects.replaceWorktree("/old", "/new")
+
+      expect(projects.list()).toEqual([
+        { worktree: "/other", expanded: true },
+        { worktree: "/new", expanded: true },
+      ])
+      expect(projects.last()).toBe("/new")
+      dispose()
+    })
+  })
+
   test("remove drops a project without recording it as recently closed", () => {
     createRoot((dispose) => {
       const [scope] = createSignal(ServerScope.local)

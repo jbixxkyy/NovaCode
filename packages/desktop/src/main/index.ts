@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { mkdirSync, rmSync } from "node:fs"
+import { mkdirSync, rmSync, writeFileSync, unlinkSync } from "node:fs"
 import * as http from "node:http"
 import { createServer } from "node:net"
 import { homedir, tmpdir } from "node:os"
@@ -49,6 +49,8 @@ import { migrate } from "./migrate"
 import { cleanupStoreFiles } from "./store-cleanup"
 import { startBackgroundCli } from "./background-cli"
 import { setNativeTranslations } from "./native-translations"
+import { cleanupWebAppProcesses } from "./desktop-menu-actions"
+import { getStore } from "./store"
 
 const APP_NAMES: Record<string, string> = {
   dev: "NovaCode Dev",
@@ -85,7 +87,54 @@ function emitDeepLinks(urls: string[]) {
   if (win) sendDeepLinks(win, urls)
 }
 
+const DESKTOP_SHARING_KEY = "desktopSharingEnabled"
+
+function getDesktopSharingEnabled(): boolean {
+  try {
+    const value = getStore().get(DESKTOP_SHARING_KEY)
+    return value === undefined ? true : Boolean(value)
+  } catch {
+    return true
+  }
+}
+
+function setDesktopSharingEnabled(enabled: boolean) {
+  try {
+    getStore().set(DESKTOP_SHARING_KEY, enabled)
+  } catch {}
+  if (!enabled) {
+    removeDesktopDiscovery()
+    return
+  }
+  const data = lastDiscoveryData
+  if (data) writeDesktopDiscovery(data)
+}
+
+let lastDiscoveryData: { url: string; username: string; password: string } | null = null
+
+function writeDesktopDiscovery(data: { url: string; username: string; password: string }) {
+  lastDiscoveryData = data
+  if (!getDesktopSharingEnabled()) return
+  try {
+    const dir = join(homedir(), ".novacode")
+    mkdirSync(dir, { recursive: true })
+    const discoveryPath = join(dir, "desktop-discovery.json")
+    writeFileSync(discoveryPath, JSON.stringify({
+      ...data,
+      pid: process.pid,
+      channel: CHANNEL,
+    }, null, 2))
+  } catch {}
+}
+
+function removeDesktopDiscovery() {
+  try {
+    unlinkSync(join(homedir(), ".novacode", "desktop-discovery.json"))
+  } catch {}
+}
+
 async function killSidecar() {
+  removeDesktopDiscovery()
   if (!server) return
   const current = server
   server = null
@@ -165,6 +214,7 @@ const main = Effect.gen(function* () {
     },
   )
   const stopSidecars = async () => {
+    cleanupWebAppProcesses()
     await killSidecar()
     wslServers.stopAll()
   }
@@ -246,6 +296,7 @@ const main = Effect.gen(function* () {
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.on(signal, () => {
       setAppQuitting()
+      removeDesktopDiscovery()
       void stopSidecars().finally(() => app.quit())
     })
   }
@@ -310,6 +361,8 @@ const main = Effect.gen(function* () {
     setNativeTranslations: (bundle) => {
       if (setNativeTranslations(bundle)) createMenu(menuDeps)
     },
+    getDesktopSharingEnabled: () => getDesktopSharingEnabled(),
+    setDesktopSharingEnabled: (enabled) => setDesktopSharingEnabled(enabled),
   })
   registerWslIpcHandlers(wslServers)
   void updater.start()
@@ -338,6 +391,7 @@ const main = Effect.gen(function* () {
         username: sidecar.username,
         password: sidecar.password,
       })
+      writeDesktopDiscovery({ url: sidecar.url, username: sidecar.username, password: sidecar.password })
 
       if (process.platform === "win32") {
         void wslServers.initialize().catch((error) => logger.error("wsl server initialization failed", error))
@@ -402,6 +456,8 @@ const main = Effect.gen(function* () {
         }),
       ),
     )
+
+    writeDesktopDiscovery({ url, username: "novacode", password })
 
     logger.log("loading task finished")
   }).pipe(forwardInitializationFailure(serverReady), Effect.forkChild)

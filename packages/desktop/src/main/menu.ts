@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu } from "electron"
+import { app, BrowserWindow, Menu } from "electron"
 import type { MenuItemConstructorOptions } from "electron"
 import {
   DESKTOP_MENU,
@@ -21,7 +21,10 @@ type Deps = {
 export function createMenu(deps: Deps) {
   if (process.platform !== "darwin") return
 
-  const template = DESKTOP_MENU.filter((menu) => desktopMenuVisible(menu, "macos")).map((menu) => {
+  const visibleMenus = DESKTOP_MENU.filter(
+    (menu) => desktopMenuVisible(menu, "macos") && !(app.isPackaged && menu.id === "developer"),
+  )
+  const template = visibleMenus.map((menu) => {
     if (menu.role) return { role: nativeRole(menu.role), label: nativeT(menu.labelKey) }
     return {
       label: nativeT(menu.labelKey),

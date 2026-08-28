@@ -1751,10 +1751,29 @@ export default function Page() {
     return followupMutation.variables?.id
   })
 
+  const [delivery, setDelivery] = createSignal<"steer" | "queue">(settings.general.followup())
+  const deliveryMode = createMemo(() => {
+    const id = params.id
+    if (!id) return "steer" as const
+    if (!busy(id) || composer.blocked() || isChildSession()) return "steer" as const
+    return delivery()
+  })
+  const deliveryUI = createMemo(() => {
+    const id = params.id
+    if (!id) return undefined
+    if (!busy(id) || composer.blocked() || isChildSession()) return undefined
+    return {
+      current: deliveryMode,
+      onSelect: (mode: string) => {
+        if (mode === "steer" || mode === "queue") setDelivery(mode)
+      },
+    }
+  })
+
   const queueEnabled = createMemo(() => {
     const id = params.id
     if (!id) return false
-    return settings.general.followup() === "queue" && busy(id) && !composer.blocked() && !isChildSession()
+    return deliveryMode() === "queue" && busy(id) && !composer.blocked() && !isChildSession()
   })
 
   const followupText = (item: FollowupDraft) => {
@@ -2232,6 +2251,9 @@ export default function Page() {
                         const id = params.id
                         if (!id) return
                         setFollowup("paused", id, true)
+                      },
+                      get delivery() {
+                        return deliveryUI()
                       },
                     })
                     return <PromptInputV2Composer controller={controller} borderUnderlay />

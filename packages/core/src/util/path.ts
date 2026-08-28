@@ -1,3 +1,18 @@
+export function normalizePathPrefix(input: string) {
+  const value = input.replaceAll("\\", "/")
+  if (value === "/") return value
+  return value.replace(/\/+$/, "")
+}
+
+/** Rewrite `value` when it is `from` or a path under `from`. Keeps `to`'s slash style. */
+export function rewritePathPrefix(from: string, to: string, value: string) {
+  const fromKey = normalizePathPrefix(from)
+  const valueKey = normalizePathPrefix(value)
+  if (valueKey !== fromKey && !valueKey.startsWith(`${fromKey}/`)) return value
+  const combined = `${normalizePathPrefix(to)}${valueKey.slice(fromKey.length)}`
+  return to.includes("\\") && !to.includes("/") ? combined.replaceAll("/", "\\") : combined
+}
+
 export function getFilename(path: string | undefined) {
   if (!path) return ""
   const trimmed = path.replace(/[/\\]+$/, "")

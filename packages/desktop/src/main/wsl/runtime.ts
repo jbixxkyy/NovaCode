@@ -39,12 +39,12 @@ export function wslArgs(args: string[], distro?: string | null, user?: string | 
 }
 
 export function runWsl(args: string[], opts: RunWslOptions = {}) {
-  return runCommand("wsl", args, opts)
+  return runCommand(resolveSystem32Command("wsl.exe"), args, opts)
 }
 
 function runPowerShell(command: string, opts: RunWslOptions = {}) {
   return runCommand(
-    "powershell.exe",
+    resolveSystem32Command("powershell.exe"),
     ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
     opts,
   )
@@ -268,7 +268,7 @@ export async function installWslNovacode(version: string, distro: string, opts?:
   return runInteractiveCommand(
     resolveSystem32Command("wsl.exe"),
     wslArgs(
-      ["bash", "-lc", `curl -fsSL https://opencode.ai/install | bash -s -- --version ${shellEscape(version)}`],
+      ["bash", "-lc", `curl -fsSL https://novacode.ai/install | bash -s -- --version ${shellEscape(version)}`],
       distro,
     ),
     withTimeout(opts, DEFAULT_WSL_INSTALL_TIMEOUT_MS),
@@ -311,7 +311,11 @@ export async function resolveWslNovacode(distro: string, opts?: RunWslOptions) {
   return firstLine(
     (
       await runWslSh(
-        'if [ -x "$HOME/.opencode/bin/opencode" ]; then printf "%s\\n" "$HOME/.opencode/bin/opencode"; fi',
+        [
+          'if [ -x "$HOME/.novacode/bin/novacode" ]; then printf "%s\\n" "$HOME/.novacode/bin/novacode"',
+          'elif command -v novacode >/dev/null 2>&1; then command -v novacode',
+          "fi",
+        ].join("; "),
         distro,
         opts,
       )
@@ -326,7 +330,7 @@ export async function readWslCommandVersion(command: string, distro: string, opt
 
 export function openWslTerminal(distro?: string | null) {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn("cmd.exe", wslTerminalArgs(distro), {
+    const child = spawn(resolveSystem32Command("cmd.exe"), wslTerminalArgs(distro), {
       detached: true,
       stdio: "ignore",
       windowsHide: true,
@@ -390,9 +394,8 @@ export function shellEscape(value: string) {
   return `'${value.replace(/'/g, `'"'"'`)}'`
 }
 
-function resolveSystem32Command(command: string) {
-  const root = process.env.SystemRoot ?? process.env.windir
-  if (!root) return command
+export function resolveSystem32Command(command: string) {
+  const root = process.env.SystemRoot ?? process.env.windir ?? "C:\\Windows"
   const resolved = join(root, "System32", command)
   return existsSync(resolved) ? resolved : command
 }

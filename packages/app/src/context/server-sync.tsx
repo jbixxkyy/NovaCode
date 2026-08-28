@@ -202,7 +202,10 @@ function makeQueryOptionsApi(
 }
 export type QueryOptionsApi = ReturnType<typeof makeQueryOptionsApi>
 
-export function createServerSyncContextInner(serverSDK: ServerSDK) {
+export function createServerSyncContextInner(
+  serverSDK: ServerSDK,
+  options?: { onWorktreeRelocated?: (from: string, to: string) => void },
+) {
   const language = useLanguage()
   const owner = getOwner()
   if (!owner) throw new Error("ServerSync must be created within owner")
@@ -554,6 +557,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
           bootstrap.refetch()
         },
         setGlobalProject: setProjects,
+        onWorktreeRelocated: options?.onWorktreeRelocated,
       })
       if (
         eventType === "config.updated" ||
@@ -724,8 +728,11 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
   }
 }
 
-export function createServerSyncContext(serverSDK: ServerSDK) {
-  const inner = createServerSyncContextInner(serverSDK)
+export function createServerSyncContext(
+  serverSDK: ServerSDK,
+  options?: { onWorktreeRelocated?: (from: string, to: string) => void },
+) {
+  const inner = createServerSyncContextInner(serverSDK, options)
   return Object.assign(inner, {
     ensureDirSyncContext: createRefCountMap(
       (dir) => createDirSyncContext(dir, inner, serverSDK),

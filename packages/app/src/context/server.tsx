@@ -142,6 +142,30 @@ export function createServerProjects<T extends ServerProjectState>(input: {
     touch(directory: string) {
       setStore("lastProject", input.scope(), directory)
     },
+    replaceWorktree(from: string, to: string) {
+      const fromKey = pathKey(from)
+      if (fromKey === pathKey(to)) return
+      const scope = input.scope()
+      const seen = new Set<string>()
+      const next = current().flatMap((project) => {
+        const worktree = pathKey(project.worktree) === fromKey ? to : project.worktree
+        const key = pathKey(worktree)
+        if (seen.has(key)) return []
+        seen.add(key)
+        return [{ ...project, worktree }]
+      })
+      setStore("projects", scope, next)
+      const closedSeen = new Set<string>()
+      const closed = currentClosed().flatMap((worktree) => {
+        const value = pathKey(worktree) === fromKey ? to : worktree
+        const key = pathKey(value)
+        if (seen.has(key) || closedSeen.has(key)) return []
+        closedSeen.add(key)
+        return [value]
+      })
+      setStore("recentlyClosed", scope, closed)
+      if (pathKey(input.store.lastProject[scope] ?? "") === fromKey) setStore("lastProject", scope, to)
+    },
   }
 }
 

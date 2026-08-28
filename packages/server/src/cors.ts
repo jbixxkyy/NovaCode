@@ -1,6 +1,6 @@
 import { Context } from "effect"
 
-const opencodeOrigin = /^https:\/\/([a-z0-9-]+\.)*opencode\.ai$/
+const trustedOrigin = /^https:\/\/([a-z0-9-]+\.)*(opencode|novacode)\.ai$/
 
 export type CorsOptions = { readonly cors?: ReadonlyArray<string> }
 
@@ -12,10 +12,12 @@ export function isAllowedCorsOrigin(input: string | undefined, opts?: CorsOption
   if (!input) return true
   if (input.startsWith("http://localhost:")) return true
   if (input.startsWith("http://127.0.0.1:")) return true
+  // LAN origins for when web app is opened via 192.168.x.x / 10.x / 172.16-31.x
+  if (/^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(input)) return true
   if (input.startsWith("oc://renderer")) return true
   if (input === "tauri://localhost" || input === "http://tauri.localhost" || input === "https://tauri.localhost")
     return true
-  if (opencodeOrigin.test(input)) return true
+  if (trustedOrigin.test(input)) return true
   return opts?.cors?.includes(input) ?? false
 }
 

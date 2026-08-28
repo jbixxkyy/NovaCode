@@ -48,3 +48,9 @@ Core workflow:
 2. `agent-browser snapshot -i` - Get interactive elements with refs (@e1, @e2)
 3. `agent-browser click @e1` / `fill @e2 "text"` - Interact using refs
 4. Re-snapshot after page changes
+
+## Persist & Rebrand Storage
+
+- `src/utils/persist.ts` primary keys are `novacode.global.dat` / `novacode.window.*` / `novacode.{workspace,draft}.*`; legacy `opencode.*` is read-only fallback. `GLOBAL_STORAGE` has `legacyStorageNames=[opencode.global.dat]`; workspace/draft use `prefixedStorage("novacode",…)` and `legacyWorkspaceStorage` enumerates `opencode` aliases for both `/` and `\` pathKey variants.
+- `evict()` and alias enumeration must handle both `novacode.` and `opencode.` prefixes or quota eviction misses legacy entries. `windowStorage(windowID)` prefixes with `novacode.window` and legacy reads use `opencode.window` alias.
+- `src/context/server.tsx:replaceWorktree` dedupes by `pathKey` (normalized `/`), updates `projects`, `recentlyClosed`, and `lastProject` atomically; used after `Project.relocate` emits worktree changes.

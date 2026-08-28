@@ -2538,6 +2538,44 @@ export type SkillsListOutput = {
   }>
 }
 
+export type SkillsCreateInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+  readonly name: { readonly name: string; readonly description?: string | undefined; readonly content: string }["name"]
+  readonly description?: {
+    readonly name: string
+    readonly description?: string | undefined
+    readonly content: string
+  }["description"]
+  readonly content: {
+    readonly name: string
+    readonly description?: string | undefined
+    readonly content: string
+  }["content"]
+}
+
+export type SkillsCreateOutput = {
+  readonly name: string
+  readonly description?: string
+  readonly slash?: boolean
+  readonly location: string
+  readonly content: string
+}
+
+export type SkillsRemoveInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+    readonly name: string
+  }["location"]
+  readonly name: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+    readonly name: string
+  }["name"]
+}
+
+export type SkillsRemoveOutput = void
+
 export type EventsSubscribeOutput = OpenCodeEventEncoded
 
 export type PtysListInput = {

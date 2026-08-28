@@ -2,6 +2,7 @@ import { execFile } from "node:child_process"
 import { access, readFile, readdir } from "node:fs/promises"
 import { dirname, extname, join } from "node:path"
 import util from "node:util"
+import { resolveSystem32Command } from "./wsl/runtime"
 
 const execFilePromise = util.promisify(execFile)
 
@@ -39,7 +40,7 @@ async function checkMacosApp(appName: string) {
 async function resolveWindowsAppPath(appName: string): Promise<string | null> {
   let output: string
   try {
-    output = await execFilePromise("where", [appName]).then((r) => r.stdout.toString())
+    output = await execFilePromise(resolveSystem32Command("where.exe"), [appName]).then((r) => r.stdout.toString())
   } catch {
     return null
   }

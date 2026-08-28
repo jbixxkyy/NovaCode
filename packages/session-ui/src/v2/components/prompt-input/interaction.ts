@@ -34,6 +34,10 @@ export type PromptInputV2ViewConfig = {
   agent?: PromptInputV2SelectControl
   model?: PromptInputV2SelectControl
   variant?: PromptInputV2SelectControl
+  delivery?: {
+    current: Accessor<string>
+    onSelect: (mode: string) => void
+  }
   submit: {
     stopping: Accessor<boolean>
     working?: Accessor<boolean>

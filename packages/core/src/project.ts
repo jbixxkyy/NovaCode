@@ -8,6 +8,7 @@ import { FSUtil } from "./fs-util"
 import { Git } from "./git"
 import { makeGlobalNode } from "./effect/app-node"
 import { Hash } from "./util/hash"
+import { GIT_CACHE_FILE } from "./identity"
 import { ProjectDirectories } from "./project/directories"
 import { ProjectSchema } from "./project/schema"
 
@@ -63,9 +64,9 @@ const layer = Layer.effect(
     })
 
     const cached = Effect.fnUntraced(function* (dir: string) {
-      return yield* fs.readFileString(path.join(dir, "opencode")).pipe(
-        Effect.map((value) => value.trim()),
-        Effect.map((value) => (value ? ID.make(value) : undefined)),
+      return yield* fs.readFileString(path.join(dir, GIT_CACHE_FILE)).pipe(
+        Effect.map((text) => text.trim()),
+        Effect.map((text) => (text ? ID.make(text) : undefined)),
         Effect.catch(() => Effect.succeed(undefined)),
       )
     })
@@ -122,7 +123,7 @@ const layer = Layer.effect(
     })
 
     const commit = Effect.fn("Project.commit")(function* (input: { store: AbsolutePath; id: ID }) {
-      yield* fs.writeFileString(path.join(input.store, "opencode"), input.id).pipe(Effect.ignore)
+      yield* fs.writeFileString(path.join(input.store, GIT_CACHE_FILE), input.id).pipe(Effect.ignore)
     })
 
     return Service.of({ directories, resolve, commit })

@@ -52,6 +52,8 @@ type Deps = {
   exportDebugLogs: () => Promise<string>
   recordFatalRendererError: (error: FatalRendererError) => Promise<void> | void
   setNativeTranslations: (bundle: DesktopNativeBundle) => void
+  getDesktopSharingEnabled?: () => Promise<boolean> | boolean
+  setDesktopSharingEnabled?: (enabled: boolean) => Promise<void> | void
 }
 
 export function registerIpcHandlers(deps: Deps) {
@@ -296,6 +298,23 @@ export function registerIpcHandlers(deps: Deps) {
       checkForUpdates: () => void deps.showUpdater(),
       relaunch: deps.relaunch,
     })
+  })
+
+  ipcMain.handle("get-desktop-sharing-enabled", () => {
+    if (deps.getDesktopSharingEnabled) return deps.getDesktopSharingEnabled()
+    try {
+      const v = getStore().get("desktopSharingEnabled")
+      return v === undefined ? true : Boolean(v)
+    } catch {
+      return true
+    }
+  })
+  ipcMain.handle("set-desktop-sharing-enabled", (_event: IpcMainInvokeEvent, enabled: boolean) => {
+    if (deps.setDesktopSharingEnabled) return deps.setDesktopSharingEnabled(enabled)
+    try {
+      getStore().set("desktopSharingEnabled", enabled)
+    } catch {}
+    return enabled
   })
 }
 

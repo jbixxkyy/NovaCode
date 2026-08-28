@@ -1,6 +1,7 @@
 import { describe, expect } from "bun:test"
 import { Project } from "@/project/project"
 import { $ } from "bun"
+import fs from "fs/promises"
 import path from "path"
 import { tmpdirScoped } from "../fixture/fixture"
 import { GlobalBus } from "../../src/bus/global"
@@ -120,7 +121,7 @@ describe("Project.fromDirectory", () => {
       expect(result.project.vcs).toBe("git")
       expect(result.project.worktree).toBe(tmp)
 
-      const opencodeFile = path.join(tmp, ".git", "opencode")
+      const opencodeFile = path.join(tmp, ".git", "novacode")
       expect(yield* Effect.promise(() => Bun.file(opencodeFile).exists())).toBe(false)
     }),
   )
@@ -145,6 +146,94 @@ describe("Project.fromDirectory", () => {
       const tmp = yield* tmpdirScoped()
       const result = yield* project.fromDirectory(tmp)
       expect(result.project.id).toBe(ProjectV2.ID.global)
+    }),
+  )
+
+  it.live("relocates worktree and sessions when the old folder is gone", () =>
+    Effect.gen(function* () {
+      const project = yield* Project.Service
+      const { db } = yield* Database.Service
+      const tmp = yield* tmpdirScoped({ git: true })
+      const created = yield* project.fromDirectory(tmp)
+      const sessionID = crypto.randomUUID() as SessionID
+      yield* db
+        .insert(SessionTable)
+        .values({
+          id: sessionID,
+          project_id: created.project.id,
+          slug: sessionID,
+          directory: tmp,
+          title: "relocated",
+          version: "0.0.0-test",
+          time_created: Date.now(),
+          time_updated: Date.now(),
+        })
+        .run()
+        .pipe(Effect.orDie)
+
+      const dest = `${tmp}-moved`
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(() =>
+          $`rm -rf ${dest}`
+            .quiet()
+            .nothrow()
+            .then(() => undefined),
+        ),
+      )
+      yield* Effect.promise(async () => {
+        await fs.cp(tmp, dest, { recursive: true })
+        await fs.rm(tmp, { recursive: true, force: true })
+      })
+
+      const next = yield* project.fromDirectory(dest)
+      expect(next.project.id).toBe(created.project.id)
+      expect(next.project.worktree).toBe(dest)
+      expect(
+        (yield* db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get().pipe(Effect.orDie))
+          ?.directory,
+      ).toBe(dest)
+    }),
+  )
+
+  it.live("relocate remaps sessions even when the old folder still exists", () =>
+    Effect.gen(function* () {
+      const project = yield* Project.Service
+      const { db } = yield* Database.Service
+      const tmp = yield* tmpdirScoped({ git: true })
+      const created = yield* project.fromDirectory(tmp)
+      const sessionID = crypto.randomUUID() as SessionID
+      yield* db
+        .insert(SessionTable)
+        .values({
+          id: sessionID,
+          project_id: created.project.id,
+          slug: sessionID,
+          directory: tmp,
+          title: "explicit-relocate",
+          version: "0.0.0-test",
+          time_created: Date.now(),
+          time_updated: Date.now(),
+        })
+        .run()
+        .pipe(Effect.orDie)
+
+      const dest = `${tmp}-copy`
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(() =>
+          $`rm -rf ${dest}`
+            .quiet()
+            .nothrow()
+            .then(() => undefined),
+        ),
+      )
+      yield* Effect.promise(() => fs.cp(tmp, dest, { recursive: true }))
+
+      const updated = yield* project.relocate({ projectID: created.project.id, directory: dest })
+      expect(updated.worktree).toBe(dest)
+      expect(
+        (yield* db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get().pipe(Effect.orDie))
+          ?.directory,
+      ).toBe(dest)
     }),
   )
 
@@ -335,7 +424,7 @@ describe("Project.fromDirectory with worktrees", () => {
 
       expect(next.project.id).toBe(result.project.id)
 
-      const cache = path.join(tmp, ".git", "opencode")
+      const cache = path.join(tmp, ".git", "novacode")
       const exists = yield* Effect.promise(() => Bun.file(cache).exists())
       expect(exists).toBe(true)
     }),
@@ -736,8 +825,8 @@ describe("Project.fromDirectory with bare repos", () => {
       expect(result.project.id).not.toBe(ProjectV2.ID.global)
       expect(result.project.worktree).toBe(worktreePath)
 
-      const correctCache = path.join(barePath, "opencode")
-      const wrongCache = path.join(parentDir, ".git", "opencode")
+      const correctCache = path.join(barePath, "novacode")
+      const wrongCache = path.join(parentDir, ".git", "novacode")
 
       expect(yield* Effect.promise(() => Bun.file(correctCache).exists())).toBe(true)
       expect(yield* Effect.promise(() => Bun.file(wrongCache).exists())).toBe(false)
@@ -771,9 +860,9 @@ describe("Project.fromDirectory with bare repos", () => {
 
       expect(result.project.id).not.toBe(next.project.id)
 
-      const cacheA = path.join(bareA, "opencode")
-      const cacheB = path.join(bareB, "opencode")
-      const wrongCache = path.join(parentDir, ".git", "opencode")
+      const cacheA = path.join(bareA, "novacode")
+      const cacheB = path.join(bareB, "novacode")
+      const wrongCache = path.join(parentDir, ".git", "novacode")
 
       expect(yield* Effect.promise(() => Bun.file(cacheA).exists())).toBe(true)
       expect(yield* Effect.promise(() => Bun.file(cacheB).exists())).toBe(true)
@@ -801,7 +890,7 @@ describe("Project.fromDirectory with bare repos", () => {
       expect(result.project.id).not.toBe(ProjectV2.ID.global)
       expect(result.project.worktree).toBe(worktreePath)
 
-      const correctCache = path.join(barePath, "opencode")
+      const correctCache = path.join(barePath, "novacode")
       expect(yield* Effect.promise(() => Bun.file(correctCache).exists())).toBe(true)
     }),
   )

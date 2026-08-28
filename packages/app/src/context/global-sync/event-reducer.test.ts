@@ -105,6 +105,24 @@ describe("applyGlobalEvent", () => {
     expect(refreshCount).toBe(0)
   })
 
+  test("notifies when project.updated changes worktree", () => {
+    const project = [{ id: "a", worktree: "/old" }] as Project[]
+    const relocated: Array<[string, string]> = []
+    applyGlobalEvent({
+      event: { type: "project.updated", properties: { id: "a", worktree: "/new" } },
+      project,
+      refresh() {},
+      setGlobalProject(next) {
+        if (typeof next === "function") next(project)
+      },
+      onWorktreeRelocated(from, to) {
+        relocated.push([from, to])
+      },
+    })
+    expect(relocated).toEqual([["/old", "/new"]])
+    expect(project[0]?.worktree).toBe("/new")
+  })
+
   test("handles global.disposed by triggering refresh", () => {
     let refreshCount = 0
     applyGlobalEvent({

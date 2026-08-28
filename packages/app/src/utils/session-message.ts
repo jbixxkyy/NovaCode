@@ -286,34 +286,37 @@ function assistantParts(sessionID: string, message: SessionMessageAssistant): Pa
       return content.text.trim() ? [part] : []
     }
     const tool = toolPart(sessionID, message.id, content)
-    const rawState = content.state as typeof content.state & { attachments?: Array<{ uri: string; mime: string; name?: string }> }
-    const fileParts: FilePart[] =
-      content.state.status === "completed" || content.state.status === "running"
-        ? [
-            ...content.state.content
-              .filter((item): item is Extract<typeof item, { type: "file" }> => item.type === "file")
-              .map((item) => ({
-                id: sessionMessagePartID(message.id, "file", ordinals.file++),
-                sessionID,
-                messageID: message.id,
-                type: "file" as const,
-                mime: item.mime,
-                filename: item.name,
-                url: item.uri,
-              })),
-            ...(content.state.status === "completed" && rawState.attachments
-              ? rawState.attachments.map((item) => ({
-                  id: sessionMessagePartID(message.id, "file", ordinals.file++),
-                  sessionID,
-                  messageID: message.id,
-                  type: "file" as const,
-                  mime: item.mime,
-                  filename: item.name,
-                  url: item.uri,
-                }))
-              : []),
-          ]
-        : []
+    const rawState = content.state as typeof content.state & {
+      attachments?: Array<{ uri: string; mime: string; name?: string }>
+      content?: Array<{ type: string; mime: string; name?: string; uri: string }>
+    }
+    const toolContent = content.state.status === "completed" || content.state.status === "running"
+      ? (rawState.content ?? [])
+      : []
+    const fileParts: FilePart[] = [
+      ...toolContent
+        .filter((item): item is Extract<typeof item, { type: "file" }> => item.type === "file")
+        .map((item) => ({
+          id: sessionMessagePartID(message.id, "file", ordinals.file++),
+          sessionID,
+          messageID: message.id,
+          type: "file" as const,
+          mime: item.mime,
+          filename: item.name,
+          url: item.uri,
+        })),
+      ...(content.state.status === "completed" && rawState.attachments
+        ? rawState.attachments.map((item) => ({
+            id: sessionMessagePartID(message.id, "file", ordinals.file++),
+            sessionID,
+            messageID: message.id,
+            type: "file" as const,
+            mime: item.mime,
+            filename: item.name,
+            url: item.uri,
+          }))
+        : []),
+    ]
     return [tool, ...fileParts]
   })
 }

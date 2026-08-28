@@ -35,6 +35,8 @@ function credentialFromRequest(request: HttpServerRequest.HttpServerRequest) {
   return Effect.succeed(emptyCredential())
 }
 
+const PUBLIC_API_PATHS = new Set(["/global/health", "/global/desktop-discovery", "/api/health"])
+
 export const authorizationLayer = Layer.effect(
   Authorization,
   Effect.gen(function* () {
@@ -43,9 +45,11 @@ export const authorizationLayer = Layer.effect(
     return Authorization.of((effect) =>
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
+        const url = new URL(request.url, "http://localhost")
+        if (PUBLIC_API_PATHS.has(url.pathname) && request.method === "GET") return yield* effect
         // Browsers cannot set headers on WebSocket upgrades, so a ticketed PTY connect skips
         // credential checks here; the connect handler consumes and validates the ticket.
-        if (hasPtyConnectTicketURL(new URL(request.url, "http://localhost"))) return yield* effect
+        if (hasPtyConnectTicketURL(url)) return yield* effect
         const credential = yield* credentialFromRequest(request)
         if (ServerAuth.authorized(credential, config)) return yield* effect
         yield* HttpEffect.appendPreResponseHandler((_request, response) =>

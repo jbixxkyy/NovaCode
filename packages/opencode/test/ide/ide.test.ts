@@ -74,6 +74,13 @@ describe("ide", () => {
     expect(Ide.alreadyInstalled()).toBe(true)
   })
 
+  test("should recognize vscode NOVACODE_CALLER", () => {
+    delete process.env["OPENCODE_CALLER"]
+    process.env["NOVACODE_CALLER"] = "vscode"
+
+    expect(Ide.alreadyInstalled()).toBe(true)
+  })
+
   test("should return false for unknown OPENCODE_CALLER", () => {
     process.env["OPENCODE_CALLER"] = "unknown"
 

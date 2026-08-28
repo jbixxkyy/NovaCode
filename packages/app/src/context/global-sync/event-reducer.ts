@@ -39,6 +39,7 @@ export function applyGlobalEvent(input: {
   project: Project[]
   setGlobalProject: (next: Project[] | ((draft: Project[]) => Project[])) => void
   refresh: () => void
+  onWorktreeRelocated?: (from: string, to: string) => void
 }) {
   if (input.event.type === "global.disposed" || input.event.type === "server.connected") {
     input.refresh()
@@ -49,6 +50,10 @@ export function applyGlobalEvent(input: {
   const properties = input.event.properties as Project
   const result = Binary.search(input.project, properties.id, (s) => s.id)
   if (result.found) {
+    const previous = input.project[result.index]?.worktree
+    if (previous && properties.worktree && previous !== properties.worktree) {
+      input.onWorktreeRelocated?.(previous, properties.worktree)
+    }
     input.setGlobalProject(
       produce((draft) => {
         draft[result.index] = { ...draft[result.index], ...properties }

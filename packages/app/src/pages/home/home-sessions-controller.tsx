@@ -22,6 +22,9 @@ import { showToast } from "@/utils/toast"
 import { Binary } from "@opencode-ai/core/util/binary"
 import { archiveHomeSession } from "../home-session-archive"
 import type { HomeController } from "./home-controller"
+import { sessionMatchesHomeProjects } from "./home-session-match"
+
+export { sessionMatchesHomeProjects }
 
 const HOME_SESSION_LIMIT = 64
 export type HomeSessionRecord = {
@@ -251,8 +254,9 @@ function buildHomeSessionRecords(input: {
   projects: () => LocalProject[]
   projectByID: () => Map<string, LocalProject>
 }) {
-  const directories = new Set(input.projectDirectories().map(pathKey))
-  const sessions = input.sessions().filter((session) => directories.has(pathKey(session.directory)))
+  const sessions = input.sessions().filter((session) =>
+    sessionMatchesHomeProjects(session, input.projectDirectories(), input.projects()),
+  )
   return [...new Map(sessions.map((session) => [session.id, session] as const)).values()]
     .sort(compareSessionTime)
     .flatMap((session) => {

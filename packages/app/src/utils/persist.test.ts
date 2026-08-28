@@ -115,7 +115,7 @@ describe("persist localStorage resilience", () => {
   test("workspace storage sanitizes Windows filename characters", () => {
     const result = persistTesting.workspaceStorage("C:\\Users\\foo")
 
-    expect(result).toStartWith("opencode.workspace.")
+    expect(result).toStartWith("novacode.workspace.")
     expect(result.endsWith(".dat")).toBeTrue()
     expect(/[:\\/]/.test(result)).toBeFalse()
   })
@@ -124,14 +124,16 @@ describe("persist localStorage resilience", () => {
     const target = Persist.workspace("C:\\Users\\foo", "vcs")
 
     expect(target.storage).toBe(persistTesting.workspaceStorage("C:/Users/foo"))
-    expect(target.legacyStorageNames).toEqual([persistTesting.workspaceStorage("C:\\Users\\foo")])
+    expect(target.legacyStorageNames).toContain(persistTesting.workspaceStorage("C:\\Users\\foo"))
+    expect(target.legacyStorageNames?.some((name) => name.startsWith("opencode.workspace."))).toBe(true)
   })
 
   test("workspace target keeps backslash storage as fallback for normalized Windows paths", () => {
     const target = Persist.workspace("C:/Users/foo", "vcs")
 
     expect(target.storage).toBe(persistTesting.workspaceStorage("C:/Users/foo"))
-    expect(target.legacyStorageNames).toEqual([persistTesting.workspaceStorage("C:\\Users\\foo")])
+    expect(target.legacyStorageNames).toContain(persistTesting.workspaceStorage("C:\\Users\\foo"))
+    expect(target.legacyStorageNames?.some((name) => name.startsWith("opencode.workspace."))).toBe(true)
   })
 
   test("migrates direct legacy keys into scoped storage", () => {
@@ -184,6 +186,12 @@ describe("persist localStorage resilience", () => {
     expect(storage.getItem(`${target.storage}:${target.key}`)).toBeNull()
   })
 
+  test("local workspace keeps OpenCode storage as a rebrand fallback", () => {
+    const target = Persist.workspace("/home/luke/repo", "prompt")
+    expect(target.storage).toStartWith("novacode.workspace.")
+    expect(target.legacyStorageNames?.some((name) => name.startsWith("opencode.workspace."))).toBe(true)
+  })
+
   test("server workspace target preserves local storage and isolates remote storage", () => {
     const local = Persist.serverWorkspace(ServerScope.local, "/home/luke/repo", "prompt")
     const windows = Persist.serverWorkspace("https://windows.example" as ServerScope, "/home/luke/repo", "prompt")
@@ -200,7 +208,7 @@ describe("persist localStorage resilience", () => {
   test("server global target preserves local key and isolates remote keys", () => {
     expect(Persist.serverGlobal(ServerScope.local, "notification")).toEqual(Persist.global("notification"))
     expect(Persist.serverGlobal("https://debian.example" as ServerScope, "notification")).toEqual({
-      storage: "opencode.global.dat",
+      storage: "novacode.global.dat",
       key: "https://debian.example\0notification",
     })
   })

@@ -117,10 +117,38 @@ export function createHomeProjectsController(home: HomeController) {
           }),
         )
       },
+      relocate: (conn: ServerConnection.Any, project: LocalProject) => {
+        if (home.server.health(conn)?.healthy === false) return
+        pickDirectory({
+          server: conn,
+          title: language.t("dialog.project.relocate.title"),
+          onSelect: (result) => {
+            const directory = Array.isArray(result) ? result[0] : result
+            if (!directory) return
+            const ctx = home.server.context(conn)
+            const location = { directory }
+            void ctx.sdk.api.project
+              .current({ location })
+              .then((current) => {
+                ctx.sync.child(directory, { bootstrap: false })[1]("project", current.id)
+                ctx.projects.replaceWorktree(project.worktree, directory)
+                ctx.projects.open(directory)
+                ctx.projects.touch(directory)
+                home.selection.set({ server: ServerConnection.key(conn), directory })
+              })
+              .catch((cause: unknown) =>
+                showToast({
+                  title: language.t("common.requestFailed"),
+                  description: errorMessage(cause, language.t("common.requestFailed")),
+                }),
+              )
+          },
+        })
+      },
     },
     utility: {
       settings: openSettings,
-      help: () => platform.openExternal("https://opencode.ai/desktop-feedback"),
+      help: () => platform.openExternal("https://novacode.ai/desktop-feedback"),
     },
   }
 }

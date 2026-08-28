@@ -114,11 +114,16 @@ async function backupAndStripLegacy(file: string, source: string) {
 
 async function opencodeFiles(input: { directories: string[]; cwd: string }) {
   const files = [
-    ...ConfigPaths.fileInDirectory(Global.Path.config, "opencode"),
-    ...(await Filesystem.findUp(["opencode.json", "opencode.jsonc"], input.cwd, undefined, { rootFirst: true })),
+    ...ConfigPaths.projectConfigFilesInDirectory(Global.Path.config),
+    ...(await Filesystem.findUp(
+      ["novacode.json", "novacode.jsonc", "opencode.json", "opencode.jsonc"],
+      input.cwd,
+      undefined,
+      { rootFirst: true },
+    )),
   ]
   for (const dir of unique(input.directories)) {
-    files.push(...ConfigPaths.fileInDirectory(dir, "opencode"))
+    files.push(...ConfigPaths.projectConfigFilesInDirectory(dir))
   }
   if (Flag.OPENCODE_CONFIG) files.push(Flag.OPENCODE_CONFIG)
 

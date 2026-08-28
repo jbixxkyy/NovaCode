@@ -62,12 +62,21 @@ const GlobalUpgradeResult = Schema.Union([
   }),
 ])
 
+const DesktopDiscovery = Schema.Struct({
+  url: Schema.String,
+  username: Schema.String,
+  password: Schema.String,
+  pid: Schema.Number,
+  channel: Schema.String,
+})
+
 export const GlobalPaths = {
   health: "/global/health",
   event: "/global/event",
   config: "/global/config",
   dispose: "/global/dispose",
   upgrade: "/global/upgrade",
+  desktopDiscovery: "/global/desktop-discovery",
 } as const
 
 export const GlobalApi = HttpApi.make("global").add(
@@ -129,6 +138,21 @@ export const GlobalApi = HttpApi.make("global").add(
           identifier: "global.upgrade",
           summary: "Upgrade opencode",
           description: "Upgrade opencode to the specified version or latest if not specified.",
+        }),
+      ),
+      HttpApiEndpoint.get("desktopDiscovery", GlobalPaths.desktopDiscovery, {
+        success: described(
+          Schema.Struct({
+            available: Schema.Boolean,
+            discovery: Schema.optional(DesktopDiscovery),
+          }),
+          "Desktop discovery information",
+        ),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "global.desktopDiscovery",
+          summary: "Get desktop discovery info",
+          description: "Check if a desktop app sidecar is running and return its connection details.",
         }),
       ),
     )

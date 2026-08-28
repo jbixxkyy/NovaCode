@@ -129,3 +129,9 @@ Use `Effect.cached` when multiple concurrent callers should share a single in-fl
 Use `EffectBridge` for native or external callbacks (`@parcel/watcher`, `node-pty`, native `fs.watch`, plugin callbacks, etc.) that need to re-enter Effect services with instance/workspace context.
 
 Plain async code should pass explicit context or stay inside an Effect fiber; do not add ambient instance context shims.
+
+## Rebrand Config & Project Migration
+
+- `src/config/paths.ts` must resolve both `.novacode` and `.opencode` dirs and all four `PROJECT_CONFIG_FILES` (`novacode.json[c]`/`opencode.json[c]`). `directories()` gathers hits for both via `CONFIG_DIR_NAMES` then orders by parent with `orderConfigDirs` so `.novacode` sorts before `.opencode` per parent. `projectConfigFiles()` deduplicates by dir and checks `afs.existsSafe` for each filename variant.
+- `src/project/project.ts:fromDirectory` calls `migrateProjectId(oldID→newID)` which clears `ProjectDirectoryTable` for oldID (directories re-populated) and moves `SessionTable`/`WorkspaceTable`; `remapWorktree` uses `rewritePathPrefix` to rewrite session dirs, project dirs, and `worktree`/`sandboxes`, deduping sandboxes and filtering non-existent paths. `relocate()` validates resolved ID matches expected or throws `RelocateMismatchError`.
+- `src/config/paths.ts:isConfigDirectory` delegates to `Identity.isAppConfigDir(dir, Flag.OPENCODE_CONFIG_DIR)` so custom config dir still counts.

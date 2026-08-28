@@ -133,6 +133,8 @@ const api: ElectronAPI = {
   setForceFocus: (enabled) => ipcRenderer.invoke("set-force-focus", enabled),
   recordFatalRendererError: (error) => ipcRenderer.invoke("record-fatal-renderer-error", error),
   setNativeTranslations: (bundle) => ipcRenderer.invoke("set-native-translations", bundle),
+  getDesktopSharingEnabled: () => ipcRenderer.invoke("get-desktop-sharing-enabled"),
+  setDesktopSharingEnabled: (enabled: boolean) => ipcRenderer.invoke("set-desktop-sharing-enabled", enabled),
 }
 
 contextBridge.exposeInMainWorld("api", api)

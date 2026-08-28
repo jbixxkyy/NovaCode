@@ -253,6 +253,36 @@ export function PromptInputV2(props: PromptInputV2Props) {
                 </Show>
               )}
             </Show>
+            <Show when={view.delivery}>
+              <div class="flex items-center rounded-lg border border-v2-border-border-base bg-v2-background-bg-base p-[3px]">
+                <button
+                  type="button"
+                  class="rounded-md px-2 py-[3px] text-[11px] font-medium leading-none transition-colors"
+                  classList={{
+                    "bg-v2-background-bg-contrast text-v2-text-text-base shadow-[var(--v2-elevation-button-contrast)]":
+                      view.delivery!.current() === "steer",
+                    "text-v2-text-text-muted hover:text-v2-text-text-base":
+                      view.delivery!.current() !== "steer",
+                  }}
+                  onClick={() => view.delivery!.onSelect("steer")}
+                >
+                  Steer
+                </button>
+                <button
+                  type="button"
+                  class="rounded-md px-2 py-[3px] text-[11px] font-medium leading-none transition-colors"
+                  classList={{
+                    "bg-v2-background-bg-contrast text-v2-text-text-base shadow-[var(--v2-elevation-button-contrast)]":
+                      view.delivery!.current() === "queue",
+                    "text-v2-text-text-muted hover:text-v2-text-text-base":
+                      view.delivery!.current() !== "queue",
+                  }}
+                  onClick={() => view.delivery!.onSelect("queue")}
+                >
+                  Queue
+                </button>
+              </div>
+            </Show>
           </div>
           <PromptInputV2SubmitButton
             mode={state.mode}

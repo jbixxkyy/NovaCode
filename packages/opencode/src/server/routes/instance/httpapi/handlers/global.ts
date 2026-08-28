@@ -1,3 +1,6 @@
+import { readFile, readdir } from "node:fs/promises"
+import { homedir } from "node:os"
+import { join } from "node:path"
 import { Config } from "@/config/config"
 import { GlobalBus, type GlobalEvent as GlobalBusEvent } from "@/bus/global"
 import { EffectBridge } from "@/effect/bridge"
@@ -145,6 +148,80 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
       return HttpServerResponse.jsonUnsafe(result.body, { status: result.status })
     })
 
+    const desktopDiscovery = Effect.fn("GlobalHttpApi.desktopDiscovery")(function* () {
+      const candidates = (() => {
+        const paths = new Set<string>()
+        // Primary + legacy app dirs (rebrand opencode → novacode)
+        paths.add(join(homedir(), ".novacode", "desktop-discovery.json"))
+        paths.add(join(homedir(), ".opencode", "desktop-discovery.json"))
+        // Windows native homedir when running in WSL or vice versa
+        if (process.env.USERPROFILE) {
+          paths.add(join(process.env.USERPROFILE, ".novacode", "desktop-discovery.json"))
+          paths.add(join(process.env.USERPROFILE, ".opencode", "desktop-discovery.json"))
+        }
+        if (process.env.HOME && process.env.HOME !== homedir()) {
+          paths.add(join(process.env.HOME, ".novacode", "desktop-discovery.json"))
+          paths.add(join(process.env.HOME, ".opencode", "desktop-discovery.json"))
+        }
+        // WSL -> Windows mount: desktop is Windows, server is WSL.
+        if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) {
+          try {
+            const winUser = process.env.USERPROFILE?.split("\\").pop() ?? process.env.USER?.split("/").pop()
+            if (winUser) {
+              for (const drive of ["c", "d"]) {
+                paths.add(join(`/mnt/${drive}/Users`, winUser, ".novacode", "desktop-discovery.json"))
+                paths.add(join(`/mnt/${drive}/Users`, winUser, ".opencode", "desktop-discovery.json"))
+              }
+            }
+          } catch {}
+        }
+        return [...paths]
+      })()
+      // WSL fallback: when USERPROFILE/winUser is missing or wrong, enumerate all
+      // Windows user profiles on common drives. Done lazily with readdir.
+      if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) {
+        for (const drive of ["c", "d"] as const) {
+          const base = `/mnt/${drive}/Users`
+          const entries = yield* Effect.tryPromise({
+            try: () => readdir(base, { withFileTypes: true }),
+            catch: () => [] as any[],
+          }).pipe(Effect.catch(() => Effect.succeed([] as any[])))
+          for (const entry of entries as any[]) {
+            if (!entry.isDirectory()) continue
+            if (entry.name === "Default" || entry.name === "Public" || entry.name === "All Users" || entry.name === "Default User") continue
+            const p = join(base, entry.name, ".novacode", "desktop-discovery.json")
+            if (!candidates.includes(p)) candidates.push(p)
+            const legacy = join(base, entry.name, ".opencode", "desktop-discovery.json")
+            if (!candidates.includes(legacy)) candidates.push(legacy)
+          }
+        }
+      }
+      let content: string | undefined
+      for (const discoveryPath of candidates) {
+        const attempt = yield* Effect.tryPromise({
+          try: () => readFile(discoveryPath, "utf-8"),
+          catch: () => undefined,
+        }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+        if (attempt) {
+          content = attempt
+          break
+        }
+      }
+      if (!content) return { available: false as const }
+      const parsed = yield* Effect.try({
+        try: () => JSON.parse(content) as unknown,
+        catch: () => undefined,
+      }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      if (
+        typeof parsed === "object" && parsed !== null &&
+        "url" in parsed && typeof (parsed as any).url === "string" &&
+        "password" in parsed && typeof (parsed as any).password === "string"
+      ) {
+        return { available: true as const, discovery: parsed as any }
+      }
+      return { available: false as const }
+    })
+
     return handlers
       .handle("health", health)
       .handleRaw("event", event)
@@ -152,5 +229,6 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
       .handle("configUpdate", configUpdate)
       .handle("dispose", dispose)
       .handleRaw("upgrade", upgradeRaw)
+      .handle("desktopDiscovery", desktopDiscovery)
   }),
 )

@@ -118,9 +118,14 @@ const layer = Layer.effect(
       return Array.from(skills.values())
     })
 
+    const reload = Effect.fn("SkillV2.reload")(function* () {
+      cache.clear()
+      yield* state.reload()
+    })
+
     return Service.of({
       transform: state.transform,
-      reload: state.reload,
+      reload,
       sources: Effect.fn("SkillV2.sources")(function* () {
         return state.get().sources
       }),

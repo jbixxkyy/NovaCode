@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto"
 import { createServer } from "node:net"
 import { app } from "electron"
 import { checkHealth } from "../server"
-import { type WslCommandLine, resolveWslNovacode, shellEscape, wslArgs } from "./runtime"
+import { type WslCommandLine, resolveSystem32Command, resolveWslNovacode, shellEscape, wslArgs } from "./runtime"
 import { pollWslHealth } from "./startup"
 import { nativeT } from "../native-translations"
 
@@ -30,14 +30,14 @@ export async function spawnWslSidecar(
     'PATH=$(awk -v RS=: -v ORS=: \'$0 !~ /^\\/mnt\\//\' <<<"$PATH" | sed "s/:$//")',
     "export PATH",
     "export WSLENV=",
-    "export OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER=true",
-    "export OPENCODE_CLIENT=desktop",
-    `export OPENCODE_SERVER_USERNAME=${shellEscape(username)}`,
-    `export OPENCODE_SERVER_PASSWORD=${shellEscape(password)}`,
+    "export NOVACODE_EXPERIMENTAL_DISABLE_FILEWATCHER=true",
+    "export NOVACODE_CLIENT=desktop",
+    `export NOVACODE_SERVER_USERNAME=${shellEscape(username)}`,
+    `export NOVACODE_SERVER_PASSWORD=${shellEscape(password)}`,
     'export XDG_STATE_HOME="$HOME/.local/state"',
     `exec ${shellEscape(opencode)} --print-logs --log-level ${app.isPackaged ? "WARN" : "INFO"} serve --hostname 0.0.0.0 --port ${port}`,
   ].join("\n")
-  const child = spawn("wsl", wslArgs(["bash", "-se"], distro), {
+  const child = spawn(resolveSystem32Command("wsl.exe"), wslArgs(["bash", "-se"], distro), {
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
   })

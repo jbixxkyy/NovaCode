@@ -308,8 +308,8 @@ export const DESKTOP_NATIVE_ENGLISH = {
   "desktop.wsl.error.installDistro": "Failed to install distro: {{distro}}",
   "desktop.wsl.error.installOpencode": "NovaCode installation failed",
   "desktop.wsl.error.alreadyAdded": "{{distro}} is already added",
-  "desktop.wsl.error.opencodeMissing": "novacode is not installed in this distro",
-  "desktop.wsl.error.opencodeCannotRun": "novacode is installed but could not run",
+  "desktop.wsl.error.opencodeMissing": "NovaCode is not installed in this distro",
+  "desktop.wsl.error.opencodeCannotRun": "NovaCode is installed but could not run",
   "desktop.wsl.error.opencodeNotInstalled": "NovaCode is not installed in {{distro}}",
   "desktop.wsl.error.updateVersion":
     "NovaCode update finished but {{distro}} still reports {{installed}}; expected {{expected}}",
@@ -323,6 +323,19 @@ export const DESKTOP_NATIVE_ENGLISH = {
 
   "desktop.picker.error.notSelected": "File was not selected by the picker",
   "desktop.picker.error.sizeLimit": "Selected attachments exceed the {{limit}} MB limit",
+
+  "desktop.webapp.error.packaged.title": "Developer tool unavailable",
+  "desktop.webapp.error.packaged.message": "Web App developer tools are only available when running NovaCode from source (bun dev).",
+  "desktop.webapp.error.packaged.detail": "In a packaged build, use the normal desktop app or run \"bun run dev\" from the repository to start the web app.",
+  "desktop.webapp.error.missingRoot.title": "Web App source not found",
+  "desktop.webapp.error.missingRoot.message": "Could not find the NovaCode source directory.",
+  "desktop.webapp.error.missingRoot.detail": "Expected packages/opencode and packages/app under {{root}}. Make sure you're running from a source checkout.",
+  "desktop.webapp.error.spawnFailed.title": "Failed to start Web App",
+  "desktop.webapp.error.spawnFailed.message": "Could not start {{target}}.",
+  "desktop.webapp.error.spawnFailed.detail": "{{error}}",
+  "desktop.webapp.error.timeout.title": "Web App did not start",
+  "desktop.webapp.error.timeout.message": "{{target}} did not become ready within {{timeout}}s.",
+  "desktop.webapp.error.timeout.detail": "Port {{port}} is not responding. Check logs or try Stop Web App and run again.",
 } as const
 
 export type DesktopNativeKey = keyof typeof DESKTOP_NATIVE_ENGLISH

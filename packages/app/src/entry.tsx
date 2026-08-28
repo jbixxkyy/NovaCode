@@ -12,7 +12,8 @@ import { authFromToken } from "@/utils/server"
 import pkg from "../package.json"
 import { ServerConnection } from "./context/server"
 
-const DEFAULT_SERVER_URL_KEY = "opencode.settings.dat:defaultServerUrl"
+const DEFAULT_SERVER_URL_KEY = "novacode.settings.dat:defaultServerUrl"
+const LEGACY_DEFAULT_SERVER_URL_KEY = "opencode.settings.dat:defaultServerUrl"
 
 const getLocale = () => {
   if (typeof navigator !== "object") return "en" as const
@@ -52,8 +53,11 @@ const setStorage = (key: string, value: string | null) => {
   }
 }
 
-const readDefaultServerUrl = () => getStorage(DEFAULT_SERVER_URL_KEY)
-const writeDefaultServerUrl = (url: string | null) => setStorage(DEFAULT_SERVER_URL_KEY, url)
+const readDefaultServerUrl = () => getStorage(DEFAULT_SERVER_URL_KEY) ?? getStorage(LEGACY_DEFAULT_SERVER_URL_KEY)
+const writeDefaultServerUrl = (url: string | null) => {
+  setStorage(DEFAULT_SERVER_URL_KEY, url)
+  if (url === null) setStorage(LEGACY_DEFAULT_SERVER_URL_KEY, null)
+}
 
 const notify: Platform["notify"] = async (title, description, onClick) => {
   if (!("Notification" in window)) return
@@ -70,7 +74,7 @@ const notify: Platform["notify"] = async (title, description, onClick) => {
 
   const notification = new Notification(title, {
     body: description ?? "",
-    icon: "https://opencode.ai/favicon-96x96-v3.png",
+    icon: "https://novacode.ai/favicon-96x96-v3.png",
   })
 
   notification.onclick = () => {
@@ -97,7 +101,8 @@ if (!(root instanceof HTMLElement) && import.meta.env.DEV) {
 }
 
 const getCurrentUrl = () => {
-  if (location.hostname.includes("opencode.ai")) return "http://localhost:4096"
+  if (location.hostname.includes("novacode.ai") || location.hostname.includes("opencode.ai"))
+    return "http://localhost:4096"
   if (import.meta.env.DEV)
     return `http://${import.meta.env.VITE_OPENCODE_SERVER_HOST ?? "localhost"}:${import.meta.env.VITE_OPENCODE_SERVER_PORT ?? "4096"}`
   return location.origin

@@ -25,9 +25,12 @@ type PersistTarget = {
 }
 
 const LEGACY_STORAGE = "default.dat"
-const GLOBAL_STORAGE = "opencode.global.dat"
-const WINDOW_STORAGE = "opencode.window"
-const LOCAL_PREFIX = "opencode."
+const GLOBAL_STORAGE = "novacode.global.dat"
+const LEGACY_GLOBAL_STORAGE = "opencode.global.dat"
+const WINDOW_STORAGE = "novacode.window"
+const LEGACY_WINDOW_PREFIX = "opencode.window"
+const LOCAL_PREFIX = "novacode."
+const LEGACY_LOCAL_PREFIX = "opencode."
 const fallback = new Map<string, boolean>()
 
 const CACHE_MAX_ENTRIES = 500
@@ -117,7 +120,7 @@ function evict(storage: Storage, keep: string, value: string) {
   for (const index of indexes) {
     const name = storage.key(index)
     if (!name) continue
-    if (!name.startsWith(LOCAL_PREFIX)) continue
+    if (!name.startsWith(LOCAL_PREFIX) && !name.startsWith(LEGACY_LOCAL_PREFIX)) continue
     if (name === keep) continue
     const stored = storage.getItem(name)
     items.push({ key: name, size: stored?.length ?? 0 })
@@ -346,34 +349,42 @@ async function migrateLegacyAsync(input: {
   return null
 }
 
+function prefixedStorage(prefix: string, kind: "workspace" | "draft", id: string) {
+  const head = (id.slice(0, 12) || kind).replace(/[^a-zA-Z0-9._-]/g, "-")
+  const sum = checksum(id) ?? "0"
+  return `${prefix}.${kind}.${head}.${sum}.dat`
+}
+
 function workspaceStorage(dir: string) {
-  const head = (dir.slice(0, 12) || "workspace").replace(/[^a-zA-Z0-9._-]/g, "-")
-  const sum = checksum(dir) ?? "0"
-  return `opencode.workspace.${head}.${sum}.dat`
+  return prefixedStorage("novacode", "workspace", dir)
 }
 
 function draftStorage(draftID: string) {
-  const head = (draftID.slice(0, 12) || "draft").replace(/[^a-zA-Z0-9._-]/g, "-")
-  const sum = checksum(draftID) ?? "0"
-  return `opencode.draft.${head}.${sum}.dat`
+  return prefixedStorage("novacode", "draft", draftID)
 }
 
-function windowStorage(windowID: string) {
+function windowStorage(windowID: string, prefix = WINDOW_STORAGE) {
   const safe = (windowID || "browser").replace(/[^a-zA-Z0-9._-]/g, "-")
-  return `${WINDOW_STORAGE}.${safe}.dat`
+  return `${prefix}.${safe}.dat`
+}
+
+function addStorageAlias(result: Set<string>, current: string, name: string) {
+  if (name !== current) result.add(name)
 }
 
 function legacyWorkspaceStorage(dir: string) {
   const storage = workspaceStorage(pathKey(dir))
   const result = new Set<string>()
-  const raw = workspaceStorage(dir)
-  if (raw !== storage) result.add(raw)
+  addStorageAlias(result, storage, workspaceStorage(dir))
+  addStorageAlias(result, storage, prefixedStorage("opencode", "workspace", pathKey(dir)))
+  addStorageAlias(result, storage, prefixedStorage("opencode", "workspace", dir))
 
   const key = pathKey(dir)
   const drive = key.length >= 3 && key[1] === ":" && key[2] === "/"
   if (drive) {
-    const backslash = workspaceStorage(key.replaceAll("/", "\\"))
-    if (backslash !== storage) result.add(backslash)
+    const backslash = key.replaceAll("/", "\\")
+    addStorageAlias(result, storage, workspaceStorage(backslash))
+    addStorageAlias(result, storage, prefixedStorage("opencode", "workspace", backslash))
   }
 
   if (result.size === 0) return
@@ -490,13 +501,18 @@ export const PersistTesting = {
 
 export const Persist = {
   global(key: string, legacy?: string[]): PersistTarget {
-    return { storage: GLOBAL_STORAGE, key, legacy }
+    return { storage: GLOBAL_STORAGE, key, legacy, legacyStorageNames: [LEGACY_GLOBAL_STORAGE] }
   },
   window(key: string, legacy?: string[]): PersistTarget {
     return { scope: "window", key, legacy }
   },
   draft(draftID: string, key: string, legacy?: string[]): PersistTarget {
-    return { storage: draftStorage(draftID), key: `draft:${key}`, legacy }
+    return {
+      storage: draftStorage(draftID),
+      key: `draft:${key}`,
+      legacy,
+      legacyStorageNames: [prefixedStorage("opencode", "draft", draftID)],
+    }
   },
   serverGlobal(scope: ServerScopeValue, key: string, legacy?: string[]): PersistTarget {
     if (scope === ServerScope.local) return Persist.global(key, legacy)
@@ -534,6 +550,7 @@ function resolveTarget(target: PersistTarget, platform: Platform): PersistTarget
   return {
     ...target,
     storage: windowStorage(windowID),
+    legacyStorageNames: [windowStorage(windowID, LEGACY_WINDOW_PREFIX)],
   }
 }
 

@@ -80,7 +80,7 @@ export function SessionFollowupDock(props: {
                 <Button
                   size="small"
                   variant="secondary"
-                  class="shrink-0"
+                  class="shrink-0 rounded-full h-[26px] px-[10px] text-[11px] font-medium"
                   disabled={!!props.sending}
                   onClick={() => props.onSend(item.id)}
                 >
@@ -89,7 +89,7 @@ export function SessionFollowupDock(props: {
                 <Button
                   size="small"
                   variant="ghost"
-                  class="shrink-0"
+                  class="shrink-0 rounded-full h-[26px] px-[10px] text-[11px] font-medium"
                   disabled={!!props.sending}
                   onClick={() => props.onEdit(item.id)}
                 >

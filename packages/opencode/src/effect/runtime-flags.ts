@@ -1,16 +1,25 @@
 import { Config, ConfigProvider, Context, Effect, Layer, Option } from "effect"
 import { ConfigService } from "@/effect/config-service"
 
-const bool = (name: string) => Config.boolean(name).pipe(Config.withDefault(false))
+const novaName = (name: string) => name.replace(/^OPENCODE_/, "NOVACODE_")
+const bool = (name: string) =>
+  Config.boolean(novaName(name)).pipe(Config.orElse(() => Config.boolean(name)), Config.withDefault(false))
 const positiveInteger = (name: string) =>
-  Config.number(name).pipe(
+  Config.number(novaName(name)).pipe(
+    Config.orElse(() => Config.number(name)),
     Config.map((value) => (Number.isInteger(value) && value > 0 ? value : undefined)),
     Config.orElse(() => Config.succeed(undefined)),
   )
 const experimental = bool("OPENCODE_EXPERIMENTAL")
 const enabledByExperimental = (name: string) =>
-  Config.all({ experimental, enabled: Config.boolean(name).pipe(Config.option) }).pipe(
-    Config.map((flags) => Option.getOrElse(flags.enabled, () => flags.experimental)),
+  Config.all({
+    experimental,
+    nova: Config.boolean(novaName(name)).pipe(Config.option),
+    open: Config.boolean(name).pipe(Config.option),
+  }).pipe(
+    Config.map((flags) =>
+      Option.getOrElse(flags.nova, () => Option.getOrElse(flags.open, () => flags.experimental)),
+    ),
   )
 
 export class Service extends ConfigService.Service<Service>()("@opencode/RuntimeFlags", {
@@ -53,7 +62,10 @@ export class Service extends ConfigService.Service<Service>()("@opencode/Runtime
   bashDefaultTimeoutMs: positiveInteger("OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS"),
   experimentalNativeLlm: bool("OPENCODE_EXPERIMENTAL_NATIVE_LLM"),
   experimentalWebSockets: bool("OPENCODE_EXPERIMENTAL_WEBSOCKETS"),
-  client: Config.string("OPENCODE_CLIENT").pipe(Config.withDefault("cli")),
+  client: Config.string("NOVACODE_CLIENT").pipe(
+    Config.orElse(() => Config.string("OPENCODE_CLIENT")),
+    Config.withDefault("cli"),
+  ),
 }) {}
 
 export type Info = Context.Service.Shape<typeof Service>

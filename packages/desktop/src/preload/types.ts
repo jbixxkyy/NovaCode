@@ -113,4 +113,6 @@ export type ElectronAPI = {
   setForceFocus: (enabled: boolean) => Promise<void>
   recordFatalRendererError: (error: FatalRendererError) => Promise<void>
   setNativeTranslations: (bundle: DesktopNativeBundle) => Promise<void>
+  getDesktopSharingEnabled: () => Promise<boolean>
+  setDesktopSharingEnabled: (enabled: boolean) => Promise<void>
 }

@@ -45,13 +45,14 @@ export function path() {
     if (Flag.OPENCODE_DB === ":memory:" || isAbsolute(Flag.OPENCODE_DB)) return Flag.OPENCODE_DB
     return join(Global.Path.data, Flag.OPENCODE_DB)
   }
+  const channel = InstallationChannel.replace(/[^a-zA-Z0-9._-]/g, "-")
   if (
-    ["latest", "beta", "prod"].includes(InstallationChannel) ||
-    process.env.OPENCODE_DISABLE_CHANNEL_DB === "1" ||
-    process.env.OPENCODE_DISABLE_CHANNEL_DB === "true"
+    ["latest", "beta", "prod"].includes(channel) ||
+    Flag.OPENCODE_DISABLE_CHANNEL_DB
   )
-    return join(Global.Path.data, "opencode.db")
-  return join(Global.Path.data, `opencode-${InstallationChannel.replace(/[^a-zA-Z0-9._-]/g, "-")}.db`)
+    return join(Global.Path.data, "novacode.db")
+  // Local and git-branch builds share one file so switching branches does not hide sessions.
+  return join(Global.Path.data, "novacode-dev.db")
 }
 
 export const node = makeGlobalNode({ service: Service, layer: layerFromPath(path()), deps: [] })

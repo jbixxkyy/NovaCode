@@ -159,3 +159,9 @@ const table = sqliteTable("session", {
 - Keep delivery vocabulary explicit. Prompts steer by default and promote at the next safe provider-turn boundary while the current drain requires continuation. An explicit `queue` input remains pending until the Session would otherwise become idle; promote one queued input at that boundary, then reevaluate continuation before promoting another. Promoting any new user input resets the selected agent's provider-turn allowance; a batch of steers resets it once.
 - Keep EventV2 replay owner claims separate from clustered Session execution ownership.
 - Keep the System Context algebra, registry, and built-ins in `src/system-context`; keep Context Source producers with their observed domains, and keep Session History selection plus Context Epoch persistence Session-owned.
+
+## NovaCode Rebrand (opencode → novacode)
+
+- Canonical app name is `novacode` (`packages/core/src/identity.ts:APP_NAME`); `opencode` is legacy fallback only. Any new env var, path, or config name must use `novacode`/`NOVACODE_` primary with `opencode`/`OPENCODE_` fallback via `Identity.appEnv`/`novaKey`.
+- `packages/core/src/global.ts` runs `migrateLegacyAppDirs` as a module-load side effect before XDG paths are defined; guarded by `shouldMigrateLegacyApp` (skips `:memory:` DB, `*_TEST_HOME`, or `NOVACODE_SKIP_LEGACY_MIGRATE=true`). Tests must set one of those guards to avoid real FS migration.
+- Files that must change together on rebrand: `packages/core/src/identity.ts` + `packages/core/src/global.ts` + `packages/core/src/global-migrate.ts` + `packages/core/src/flag/flag.ts` + `packages/opencode/src/config/paths.ts` + `packages/app/src/utils/persist.ts`. Missing any one breaks fallback/migration.
