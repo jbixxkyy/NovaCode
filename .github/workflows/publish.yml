@@ -379,8 +379,6 @@ jobs:
   publish:
     needs:
       - version
-      - build-cli
-      - sign-cli-windows
       - build-electron
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
