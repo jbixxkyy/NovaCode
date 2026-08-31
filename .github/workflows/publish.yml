@@ -115,7 +115,7 @@ jobs:
       - build-cli
       - version
     runs-on: windows-latest
-    if: github.repository == 'jbixxkyy/NovaCode'
+    if: false
     env:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
