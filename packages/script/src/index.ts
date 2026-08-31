@@ -33,7 +33,15 @@ const IS_PREVIEW = CHANNEL !== "latest"
 const VERSION = await (async () => {
   if (env.NOVACODE_VERSION) return env.NOVACODE_VERSION
   if (IS_PREVIEW) return `0.0.0-${CHANNEL}-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`
-  const current = String(rootPkg.version ?? "0.0.0")
+  let current = String(rootPkg.version ?? "")
+  if (!current || current === "0.0.0") {
+    try {
+      const desktopPkg = await Bun.file(path.resolve(import.meta.dir, "../../packages/desktop/package.json")).json()
+      current = String(desktopPkg.version ?? "0.0.0")
+    } catch {
+      current = "0.0.0"
+    }
+  }
   const [major, minor, patch] = current.split(".").map((x: string) => Number(x) || 0)
   const t = env.NOVACODE_BUMP?.toLowerCase()
   if (t === "major") return `${major + 1}.0.0`
