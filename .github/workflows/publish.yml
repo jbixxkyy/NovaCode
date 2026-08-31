@@ -280,6 +280,10 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Install node-gyp for Windows
+        if: runner.os == 'Windows'
+        run: npm install -g node-gyp
+
       - name: Prepare
         run: bun ./scripts/prepare.ts
         working-directory: packages/desktop
