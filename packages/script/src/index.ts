@@ -36,7 +36,7 @@ const VERSION = await (async () => {
   let current = String(rootPkg.version ?? "")
   if (!current || current === "0.0.0") {
     try {
-      const desktopPkg = await Bun.file(path.resolve(import.meta.dir, "../../packages/desktop/package.json")).json()
+      const desktopPkg = await Bun.file(path.resolve(import.meta.dir, "../../../packages/desktop/package.json")).json()
       current = String(desktopPkg.version ?? "0.0.0")
     } catch {
       current = "0.0.0"
