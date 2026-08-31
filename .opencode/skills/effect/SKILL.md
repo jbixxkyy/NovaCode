@@ -11,8 +11,8 @@ This codebase uses Effect for typed, composable TypeScript services, schemas, an
 
 Use the current Effect v4 / effect-smol source, not memory or older Effect v2/v3 examples.
 
-1. If `.opencode/references/effect-smol` is missing, clone `https://github.com/Effect-TS/effect-smol` there. Do this in the project, not in the skill folder.
-2. Search `.opencode/references/effect-smol` for exact APIs, examples, tests, and naming patterns before answering or implementing Effect-specific code.
+1. The `effect` reference is registered in `.opencode/opencode.jsonc` as a GitHub repo (`Effect-TS/effect-smol`). Reference it via `@effect` in prompts so the loader resolves the source.
+2. Search the referenced source for exact APIs, examples, tests, and naming patterns before answering or implementing Effect-specific code.
 3. Also inspect existing repo code for local house style before introducing new patterns.
 4. Prefer answers and implementations backed by specific source files or nearby repo examples.
 

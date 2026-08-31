@@ -36,6 +36,7 @@ export async function createOpencodeServer(options?: ServerOptions) {
     env: {
       ...process.env,
       OPENCODE_CONFIG_CONTENT: JSON.stringify(options.config ?? {}),
+      NOVACODE_CONFIG_CONTENT: JSON.stringify(options.config ?? {}),
     },
   })
   let clear = () => {}
@@ -53,7 +54,7 @@ export async function createOpencodeServer(options?: ServerOptions) {
       output += chunk.toString()
       const lines = output.split("\n")
       for (const line of lines) {
-        if (line.startsWith("opencode server listening")) {
+        if (line.includes("server listening")) {
           const match = line.match(/on\s+(https?:\/\/[^\s]+)/)
           if (!match) {
             clear()
@@ -120,6 +121,7 @@ export function createOpencodeTui(options?: TuiOptions) {
     env: {
       ...process.env,
       OPENCODE_CONFIG_CONTENT: JSON.stringify(options?.config ?? {}),
+      NOVACODE_CONFIG_CONTENT: JSON.stringify(options?.config ?? {}),
     },
   })
 

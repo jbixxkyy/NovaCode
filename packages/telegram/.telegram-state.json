@@ -1,0 +1,43 @@
+{
+  "pairings": [
+    [
+      "0b36071d",
+      {
+        "userId": 7527277539,
+        "createdAt": 1788156513962,
+        "expiresAt": 1788160113962
+      }
+    ],
+    [
+      "c3d10444",
+      {
+        "userId": 7527277539,
+        "createdAt": 1788156515233,
+        "expiresAt": 1788160115233
+      }
+    ]
+  ],
+  "pairedUsers": [
+    7527277539
+  ],
+  "sessions": [
+    [
+      "7527277539",
+      {
+        "sessionId": "ses_fa69150c8ffe1G2acL52WSlM5I",
+        "createdAt": 1788206821192
+      }
+    ]
+  ],
+  "updateOffsets": [
+    [
+      "8896679023:AAFUG8dCtV5N9OmuHfEZvGguR17ohyLLOXE",
+      293192468
+    ]
+  ],
+  "sentMessages": [],
+  "audit": {
+    "lastConfigLoad": 1788206814819,
+    "transport": "polling"
+  }
+}
