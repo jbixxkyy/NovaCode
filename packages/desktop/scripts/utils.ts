@@ -8,7 +8,7 @@ const CLI_VERSION = "0.0.0-next-16350"
 export type Channel = "dev" | "beta" | "prod"
 
 export function resolveChannel(): Channel {
-  const raw = Bun.env.NOVACODE_CHANNEL
+  const raw = Bun.env.NOVACODE_CHANNEL ?? Bun.env.OPENCODE_CHANNEL
   if (raw === "dev" || raw === "beta" || raw === "prod") return raw
   return "dev"
 }
